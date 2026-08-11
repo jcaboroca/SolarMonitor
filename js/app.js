@@ -473,17 +473,19 @@ function pintarHistorico() {
 
   for (const fila of filas) {
     const tr = document.createElement("tr");
-    const veces = (valor) =>
-      valor == null
-        ? `<td class="numero">—</td>`
-        : `<td class="numero ${valor > 1.3 ? "desvio-mal" : valor > 1.15 ? "" : "desvio-bien"}">×${numero(valor, 2)}</td>`;
+    const desvio = (razon, sobra) => {
+      if (razon == null) return `<td class="numero">—</td>`;
+      const tono = razon > 1.3 ? "desvio-mal" : razon > 1.15 ? "" : "desvio-bien";
+      const exceso = Number.isFinite(sobra) ? `<br><small class="tenue">${sobra > 0 ? "+" : ""}${numero(sobra, 0)} kWh</small>` : "";
+      return `<td class="numero ${tono}">×${numero(razon, 2)}${exceso}</td>`;
+    };
     tr.innerHTML =
       `<td>${nombreMes(fila.mes)}<br><small class="tenue">${fila.dias} días</small></td>` +
       `<td class="numero">${numero(fila.medido?.produccion)} kWh</td>` +
       `<td class="numero">${numero(fila.medido?.total)} / ${numero(fila.factura?.total)}</td>` +
-      veces(fila.razonCompra) +
+      desvio(fila.razonCompra, fila.sobraCompra) +
       `<td class="numero">${numero(fila.medido?.excedentes)} / ${numero(fila.factura?.excedentes)}</td>` +
-      veces(fila.razonVertido) +
+      desvio(fila.razonVertido, fila.sobraVertido) +
       `<td class="numero">${euros(fila.factura?.importe)}</td>` +
       `<td class="numero"><button type="button" class="btn cuadrado" data-borrar="${fila.mes}" aria-label="Borrar ${nombreMes(fila.mes)}">×</button></td>`;
     cuerpo.appendChild(tr);

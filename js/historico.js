@@ -71,6 +71,9 @@ const mediana = (valores) => {
 const proporcion = (facturado, medido) =>
   Number.isFinite(facturado) && medido > 0.5 ? facturado / medido : null;
 
+const diferencia = (facturado, medido) =>
+  Number.isFinite(facturado) && Number.isFinite(medido) ? facturado - medido : null;
+
 const coma = (valor, decimales) => valor.toFixed(decimales).replace(".", ",");
 
 /**
@@ -83,6 +86,8 @@ export function analizarHistorico(meses) {
     ...m,
     razonCompra: proporcion(m.factura?.total, m.medido?.total),
     razonVertido: proporcion(m.factura?.excedentes, m.medido?.excedentes),
+    sobraCompra: diferencia(m.factura?.total, m.medido?.total),
+    sobraVertido: diferencia(m.factura?.excedentes, m.medido?.excedentes),
   }));
 
   const avisos = [];
@@ -121,6 +126,21 @@ export function analizarHistorico(meses) {
         ]);
       }
     }
+  }
+
+  // Si el contador deja de netear, sobran los mismos kWh en las dos direcciones.
+  for (const fila of filas) {
+    const { sobraCompra, sobraVertido } = fila;
+    if (!Number.isFinite(sobraCompra) || !Number.isFinite(sobraVertido)) continue;
+    if (sobraCompra < 20 || sobraVertido < 20) continue;
+    const mayor = Math.max(sobraCompra, sobraVertido);
+    if (Math.min(sobraCompra, sobraVertido) / mayor < 0.6) continue;
+    avisos.push([
+      "mal",
+      `En ${nombreMes(fila.mes)} sobran ${coma(sobraCompra, 0)} kWh comprados y ${coma(sobraVertido, 0)} vertidos: ` +
+        "cantidades parecidas en las dos direcciones. Eso es lo que pasa cuando el contador deja de compensar " +
+        "la energía que entra y sale a la vez y empieza a contar los dos flujos por separado.",
+    ]);
   }
 
   const tarifas = filas.map((f) => f.factura?.precioExcedentes).filter(Number.isFinite);
