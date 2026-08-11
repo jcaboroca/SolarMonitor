@@ -721,27 +721,60 @@ async function bajarDeDatadis() {
   }
   $("bajarDatadis").disabled = true;
   let bajados = 0;
+  let vacios = 0;
+  let corte = null;
   for (const mes of meses) {
     marcaDatadis(`Bajando ${mes}… (${bajados} de ${meses.length})`);
     try {
-      const curva = await datadis.curvaHoraria(suministro.cups, suministro.codigoDistribuidora, mes, suministro.tipoPunto);
+      const curva = await conEspera(mes, () =>
+        datadis.curvaHoraria(suministro.cups, suministro.codigoDistribuidora, mes, suministro.tipoPunto));
       if (curva.length) {
         const clave = mes.replace("/", "-");
         contador.curvas.set(clave, curva);
         guardarCurva(clave, curva);
         anotarContador(clave, resumirCurva(curva));
         bajados++;
+      } else {
+        vacios++;
       }
     } catch (error) {
-      marcaDatadis(`${mes}: ${error.message}`, "error");
+      corte = { mes, motivo: error.message };
       break;
     }
-    await new Promise((seguir) => setTimeout(seguir, 400));
+    await pausa(400);
   }
   $("bajarDatadis").disabled = false;
-  if (bajados) marcaDatadis(`Listo · ${bajados} mes${bajados === 1 ? "" : "es"} del contador`);
+  if (corte) {
+    marcaDatadis(
+      `${corte.motivo} Se cortó en ${corte.mes} y van ${bajados} meses guardados. ` +
+        `Pon ${corte.mes.replace("/", "-")} en «desde» y dale otra vez para seguir.`,
+      "error",
+    );
+  } else if (bajados) {
+    const nota = vacios ? ` · ${vacios} sin datos en datadis` : "";
+    marcaDatadis(`Listo · ${bajados} mes${bajados === 1 ? "" : "es"} del contador${nota}`);
+  } else {
+    marcaDatadis("Datadis no ha devuelto datos de ningún mes de ese rango.", "error");
+  }
   pintarHistorico();
   refrescarMesesContador();
+}
+
+const pausa = (ms) => new Promise((seguir) => setTimeout(seguir, ms));
+
+// Datadis corta a las pocas peticiones seguidas, pero se recupera solo si esperas.
+async function conEspera(mes, intento) {
+  for (let vuelta = 0; ; vuelta++) {
+    try {
+      return await intento();
+    } catch (error) {
+      if (!error.limitado || vuelta === 2) throw error;
+      for (let resto = 30; resto > 0; resto--) {
+        marcaDatadis(`Datadis va saturado. Reintento ${mes} en ${resto} s…`);
+        await pausa(1000);
+      }
+    }
+  }
 }
 
 // Un contador que compensa bien nunca registra entrada y salida a la vez en la misma hora.

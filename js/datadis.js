@@ -36,7 +36,9 @@ async function pedir(recurso, parametros = {}) {
     throw new Error("La sesión de datadis ha caducado. Vuelve a entrar.");
   }
   if (respuesta.status === 429) {
-    throw new Error("Datadis ha cortado por exceso de peticiones. Espera un rato y sigue desde donde se quedó.");
+    const error = new Error("Datadis ha cortado por exceso de peticiones.");
+    error.limitado = true;
+    throw error;
   }
   if (!respuesta.ok) throw new Error(`Datadis ha respondido ${respuesta.status} en ${recurso}.`);
   const texto = await respuesta.text();
