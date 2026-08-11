@@ -1,11 +1,12 @@
 import { leerXlsx } from "./xlsx.js";
 import {
   ROLES, detectarRoles, unidadDeCabecera, construirSerie, energiaKwh,
-  repartoPorPeriodo, resumenPorDia, claveDia,
+  repartoPorPeriodo, resumenPorDia, claveDia, periodoTarifa,
 } from "./datos.js";
 import { textoDelPdf, interpretarFactura, revisarFactura, lecturasFrenteAFacturado } from "./factura.js";
 import { areaApilada, barrasApiladas, barrasAgrupadas, mapaCalor, lineaSimple, COLORES } from "./graficas.js";
 import { leerHistorico, guardarMes, borrarMes, importarHistorico, analizarHistorico, mesDominante, nombreMes } from "./historico.js";
+import * as datadis from "./datadis.js";
 
 const $ = (id) => document.getElementById(id);
 const estado = { cabeceras: [], filas: [], roles: [], unidades: [], serie: null, dias: [], factura: null };
@@ -473,19 +474,15 @@ function pintarHistorico() {
 
   for (const fila of filas) {
     const tr = document.createElement("tr");
-    const desvio = (razon, sobra) => {
-      if (razon == null) return `<td class="numero">—</td>`;
-      const tono = razon > 1.3 ? "desvio-mal" : razon > 1.15 ? "" : "desvio-bien";
-      const exceso = Number.isFinite(sobra) ? `<br><small class="tenue">${sobra > 0 ? "+" : ""}${numero(sobra, 0)} kWh</small>` : "";
-      return `<td class="numero ${tono}">×${numero(razon, 2)}${exceso}</td>`;
-    };
+    const trio = (instalacion, contador, factura) =>
+      `<td class="numero trio">${numero(instalacion, 0)} / ` +
+      `<b>${contador == null ? "—" : numero(contador, 0)}</b> / ` +
+      `${numero(factura, 0)}</td>`;
     tr.innerHTML =
       `<td>${nombreMes(fila.mes)}<br><small class="tenue">${fila.dias} días</small></td>` +
       `<td class="numero">${numero(fila.medido?.produccion)} kWh</td>` +
-      `<td class="numero">${numero(fila.medido?.total)} / ${numero(fila.factura?.total)}</td>` +
-      desvio(fila.razonCompra, fila.sobraCompra) +
-      `<td class="numero">${numero(fila.medido?.excedentes)} / ${numero(fila.factura?.excedentes)}</td>` +
-      desvio(fila.razonVertido, fila.sobraVertido) +
+      trio(fila.medido?.total, fila.contador?.total, fila.factura?.total) +
+      trio(fila.medido?.excedentes, fila.contador?.vertido, fila.factura?.excedentes) +
       `<td class="numero">${euros(fila.factura?.importe)}</td>` +
       `<td class="numero"><button type="button" class="btn cuadrado" data-borrar="${fila.mes}" aria-label="Borrar ${nombreMes(fila.mes)}">×</button></td>`;
     cuerpo.appendChild(tr);
@@ -510,13 +507,15 @@ function pintarGraficaHistorico(filas) {
 
   leyenda("leyendaHistorico", [
     ["Comprado según tu instalación", COLORES.descarga],
+    ["Comprado según el contador", COLORES.produccion],
     ["Comprado según la factura", COLORES.importada],
   ]);
   barrasAgrupadas($("graficaHistorico"), {
     etiquetas: filas.map((f) => nombreMes(f.mes).split(" ")[0]),
     series: [
-      { nombre: "Medido", color: COLORES.descarga, valores: filas.map((f) => f.medido?.total ?? 0) },
-      { nombre: "Facturado", color: COLORES.importada, valores: filas.map((f) => f.factura?.total ?? 0) },
+      { nombre: "Instalación", color: COLORES.descarga, valores: filas.map((f) => f.medido?.total ?? 0) },
+      { nombre: "Contador", color: COLORES.produccion, valores: filas.map((f) => f.contador?.total ?? 0) },
+      { nombre: "Factura", color: COLORES.importada, valores: filas.map((f) => f.factura?.total ?? 0) },
     ],
   });
 }
@@ -616,6 +615,124 @@ function pintarMes() {
   mapaCalor($("graficaCalor"), { dias: estado.dias.map((d) => d.clave), matriz });
 }
 
+// --- Contador (datadis) ----------------------------------------------------
+
+const contador = { suministros: [], curvas: new Map() };
+
+function marcaDatadis(texto, tono = "") {
+  const marca = $("estadoDatadis");
+  marca.className = `estado ${tono}`;
+  marca.textContent = texto;
+}
+
+function suministroElegido() {
+  return contador.suministros[Number($("suministroDatadis").value)] || null;
+}
+
+async function entrarEnDatadis(evento) {
+  evento.preventDefault();
+  const clave = $("claveDatadis").value;
+  marcaDatadis("Entrando en datadis…");
+  try {
+    await datadis.entrar($("nifDatadis").value, clave);
+    $("claveDatadis").value = "";
+    contador.suministros = await datadis.suministros();
+    if (!contador.suministros.length) throw new Error("Datadis no devuelve ningún suministro a tu nombre.");
+    $("suministroDatadis").innerHTML = contador.suministros
+      .map((s, i) => `<option value="${i}">${s.cups} · ${s.direccion || s.distribuidora || ""}</option>`)
+      .join("");
+    const hoy = new Date();
+    $("hastaDatadis").value = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}`;
+    $("desdeDatadis").value = `${hoy.getFullYear() - 1}-${String(hoy.getMonth() + 1).padStart(2, "0")}`;
+    $("descargaDatadis").hidden = false;
+    marcaDatadis(`Dentro · ${contador.suministros.length} suministro${contador.suministros.length === 1 ? "" : "s"}`);
+    pintarContrato();
+  } catch (error) {
+    marcaDatadis(error.message, "error");
+  }
+}
+
+async function pintarContrato() {
+  const suministro = suministroElegido();
+  const caja = $("contratoDatadis");
+  if (!suministro) return;
+  caja.innerHTML = "<p class='ayuda'>Consultando el contrato…</p>";
+  try {
+    const lista = await datadis.contratos(suministro.cups, suministro.codigoDistribuidora);
+    if (!lista.length) {
+      caja.innerHTML = "<p class='ayuda'>Datadis no devuelve detalle de contrato para este suministro.</p>";
+      return;
+    }
+    caja.innerHTML =
+      `<h3>Cómo está dado de alta tu suministro</h3>` +
+      `<div class="tabla-envoltorio"><table class="tabla"><thead><tr>` +
+      `<th>Desde</th><th>Hasta</th><th>Comercializadora</th><th>Potencia</th><th>Autoconsumo</th>` +
+      `</tr></thead><tbody>` +
+      lista
+        .map(
+          (c) =>
+            `<tr><td>${c.desde || "—"}</td><td>${c.hasta || "—"}</td><td>${c.comercializadora || "—"}</td>` +
+            `<td class="numero">${Array.isArray(c.potencia) ? c.potencia.join(" / ") : c.potencia ?? "—"} kW</td>` +
+            `<td>${c.autoconsumo ?? "—"}</td></tr>`
+        )
+        .join("") +
+      `</tbody></table></div>` +
+      `<details class="crudo"><summary>Ver todo lo que devuelve datadis</summary><pre>${JSON.stringify(lista.map((c) => c.crudo), null, 2)}</pre></details>`;
+  } catch (error) {
+    caja.innerHTML = `<p class="veredicto mal">${error.message}</p>`;
+  }
+}
+
+function resumirCurva(registros) {
+  const festivos = estado.festivos || new Set();
+  const resumen = { P1: 0, P2: 0, P3: 0, total: 0, vertido: 0, horas: registros.length, estimadas: 0 };
+  const dias = new Set();
+  for (const punto of registros) {
+    resumen[periodoTarifa(punto.instante, festivos)] += punto.consumo;
+    resumen.total += punto.consumo;
+    resumen.vertido += punto.vertido;
+    if (!punto.real) resumen.estimadas++;
+    dias.add(claveDia(punto.instante));
+  }
+  resumen.dias = dias.size;
+  return resumen;
+}
+
+function anotarContador(mes, resumen) {
+  const previo = leerHistorico().find((m) => m.mes === mes);
+  guardarMes({ dias: resumen.dias, medido: {}, factura: {}, ...previo, mes, contador: resumen });
+}
+
+async function bajarDeDatadis() {
+  const suministro = suministroElegido();
+  if (!suministro) return;
+  const meses = datadis.mesesEntre($("desdeDatadis").value, $("hastaDatadis").value);
+  if (!meses.length) {
+    marcaDatadis("El mes inicial es posterior al final.", "error");
+    return;
+  }
+  $("bajarDatadis").disabled = true;
+  let bajados = 0;
+  for (const mes of meses) {
+    marcaDatadis(`Bajando ${mes}… (${bajados} de ${meses.length})`);
+    try {
+      const curva = await datadis.curvaHoraria(suministro.cups, suministro.codigoDistribuidora, mes, suministro.tipoPunto);
+      if (curva.length) {
+        contador.curvas.set(mes.replace("/", "-"), curva);
+        anotarContador(mes.replace("/", "-"), resumirCurva(curva));
+        bajados++;
+      }
+    } catch (error) {
+      marcaDatadis(`${mes}: ${error.message}`, "error");
+      break;
+    }
+    await new Promise((seguir) => setTimeout(seguir, 400));
+  }
+  $("bajarDatadis").disabled = false;
+  if (bajados) marcaDatadis(`Listo · ${bajados} mes${bajados === 1 ? "" : "es"} del contador`);
+  pintarHistorico();
+}
+
 // --- Arranque --------------------------------------------------------------
 
 conectarZona("soltarDatos", "ficheroDatos", cargarDatos);
@@ -653,6 +770,9 @@ $("ficheroHistorico").addEventListener("change", async (evento) => {
 });
 
 pintarHistorico();
+$("accesoDatadis").addEventListener("submit", entrarEnDatadis);
+$("suministroDatadis").addEventListener("change", pintarContrato);
+$("bajarDatadis").addEventListener("click", bajarDeDatadis);
 $("selectorDia").addEventListener("change", pintarDia);
 $("diaAnterior").addEventListener("click", () => moverDia(-1));
 $("diaSiguiente").addEventListener("click", () => moverDia(1));

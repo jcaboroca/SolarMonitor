@@ -44,6 +44,39 @@
     </label>
   </section>
 
+  <section class="tarjeta" id="datadis">
+    <h2>3 · Datos del contador</h2>
+    <p class="ayuda">
+      Descarga la curva horaria que registra tu contador desde datadis, la plataforma conjunta de las distribuidoras.
+      Tu navegador habla directamente con datadis: la contraseña no se guarda ni se envía a ningún otro sitio.
+    </p>
+    <form id="accesoDatadis" class="opciones" autocomplete="on">
+      <label>DNI/NIF
+        <input type="text" id="nifDatadis" autocomplete="username" required>
+      </label>
+      <label>Contraseña
+        <input type="password" id="claveDatadis" autocomplete="current-password" required>
+      </label>
+      <button class="btn primario" type="submit">Entrar</button>
+      <span class="estado" id="estadoDatadis"></span>
+    </form>
+    <div id="descargaDatadis" hidden>
+      <div class="opciones">
+        <label>Suministro
+          <select id="suministroDatadis"></select>
+        </label>
+        <label>Desde
+          <input type="month" id="desdeDatadis">
+        </label>
+        <label>Hasta
+          <input type="month" id="hastaDatadis">
+        </label>
+        <button class="btn primario" type="button" id="bajarDatadis">Descargar</button>
+      </div>
+      <div id="contratoDatadis"></div>
+    </div>
+  </section>
+
   <section class="tarjeta" id="mapeo" hidden>
     <h2>Columnas detectadas</h2>
     <p class="ayuda">Revisa que cada columna esté bien identificada. Lo que no uses, déjalo en «Ignorar».</p>
@@ -113,8 +146,8 @@
       <table class="tabla" id="tablaHistorico">
         <thead><tr>
           <th>Mes</th><th>Producido</th>
-          <th>Comprado<br><small>medido / facturado</small></th><th>Sobra</th>
-          <th>Vertido<br><small>medido / facturado</small></th><th>Sobra</th>
+          <th>Comprado<br><small>instalación / contador / factura</small></th>
+          <th>Vertido<br><small>instalación / contador / factura</small></th>
           <th>Importe</th><th></th>
         </tr></thead>
         <tbody></tbody>

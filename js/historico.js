@@ -76,6 +76,10 @@ const diferencia = (facturado, medido) =>
 
 const coma = (valor, decimales) => valor.toFixed(decimales).replace(".", ",");
 
+// Dos medidas de lo mismo: se aceptan como iguales si difieren poco.
+const casan = (a, b) =>
+  Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= Math.max(2, 0.1 * Math.max(Math.abs(a), Math.abs(b)));
+
 /**
  * Devuelve una fila por mes con las proporciones factura/datalogger y una lista
  * de avisos: saltos en las lecturas del contador, meses que se desvían del
@@ -141,6 +145,28 @@ export function analizarHistorico(meses) {
         "cantidades parecidas en las dos direcciones. Eso es lo que pasa cuando el contador deja de compensar " +
         "la energía que entra y sale a la vez y empieza a contar los dos flujos por separado.",
     ]);
+  }
+
+  // Con las tres medidas ya se puede decir de quién es el problema.
+  for (const fila of filas) {
+    const instalacion = fila.medido?.total;
+    const contador = fila.contador?.total;
+    const factura = fila.factura?.total;
+    if (![instalacion, contador, factura].every(Number.isFinite)) continue;
+    if (casan(contador, factura) && !casan(contador, instalacion)) {
+      avisos.push([
+        "mal",
+        `En ${nombreMes(fila.mes)} el contador registra ${coma(contador, 0)} kWh y te facturan ${coma(factura, 0)}: cuadran entre sí, ` +
+          `pero tu instalación solo midió ${coma(instalacion, 0)}. La comercializadora factura lo que le pasa el contador, ` +
+          "así que el problema está en cómo mide o está configurado el contador. Hay que reclamar a la distribuidora.",
+      ]);
+    } else if (casan(contador, instalacion) && !casan(contador, factura)) {
+      avisos.push([
+        "mal",
+        `En ${nombreMes(fila.mes)} el contador registra ${coma(contador, 0)} kWh y tu instalación ${coma(instalacion, 0)}: coinciden. ` +
+          `Pero te facturan ${coma(factura, 0)}. Te están cobrando kWh que el contador nunca registró: el problema es de la comercializadora.`,
+      ]);
+    }
   }
 
   const tarifas = filas.map((f) => f.factura?.precioExcedentes).filter(Number.isFinite);
