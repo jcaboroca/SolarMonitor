@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Solar Monitor">
+  <rect width="512" height="512" rx="96" fill="#0d1117"/>
+  <circle cx="256" cy="196" r="62" fill="#f2c94c"/>
+  <g stroke="#f2c94c" stroke-width="18" stroke-linecap="round">
+    <path d="M256 78v-32M256 346v32M134 196h-32M410 196h32M170 110l-23-23M342 110l23-23M170 282l-23 23M342 282l23-23"/>
+  </g>
+  <path d="M96 432l48-96h224l48 96z" fill="#5b8def"/>
+  <path d="M180 336h152l16 96H164z" fill="#0d1117" opacity=".35"/>
+</svg>

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0d1117">
+<title>Solar Monitor</title>
+<link rel="icon" href="assets/icono.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Solar">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="cabecera">
+  <div class="contenedor cabecera-fila">
+    <div class="crece">
+      <h1>Solar Monitor</h1>
+      <p class="sub">Compara lo que midió tu instalación con lo que te facturaron</p>
+    </div>
+    <p class="privacidad">Todo se procesa en tu navegador. Ningún fichero se sube a ningún sitio.</p>
+  </div>
+</header>
+
+<main class="contenedor">
+
+  <p id="aviso" class="aviso" hidden role="alert"></p>
+
+  <section class="cargas">
+    <label class="soltar" id="soltarDatos">
+      <input type="file" id="ficheroDatos" accept=".xlsx" hidden>
+      <strong>1 · Datos del datalogger</strong>
+      <span>Arrastra aquí el <b>.xlsx</b> exportado de Solarman o pulsa para elegirlo</span>
+      <span class="estado" id="estadoDatos"></span>
+    </label>
+    <label class="soltar" id="soltarFactura">
+      <input type="file" id="ficheroFactura" accept=".pdf" hidden>
+      <strong>2 · Factura de la luz</strong>
+      <span>Arrastra aquí el <b>.pdf</b> del mismo mes (opcional)</span>
+      <span class="estado" id="estadoFactura"></span>
+    </label>
+  </section>
+
+  <section class="tarjeta" id="mapeo" hidden>
+    <h2>Columnas detectadas</h2>
+    <p class="ayuda">Revisa que cada columna esté bien identificada. Lo que no uses, déjalo en «Ignorar».</p>
+    <div class="tabla-envoltorio">
+      <table class="tabla" id="tablaMapeo">
+        <thead><tr><th>Columna del fichero</th><th>Ejemplo</th><th>Significado</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="opciones">
+      <label class="check"><input type="checkbox" id="invertirRed"> La red está al revés (compra y vertido cambiados)</label>
+      <label class="check"><input type="checkbox" id="invertirBateria"> La batería está al revés (carga y descarga cambiadas)</label>
+      <label>Festivos del mes
+        <input type="text" id="festivos" placeholder="24/06, 15/08" autocomplete="off">
+      </label>
+    </div>
+    <button class="btn primario" type="button" id="recalcular">Recalcular</button>
+  </section>
+
+  <section id="resumen" hidden>
+    <div class="fichas" id="fichas"></div>
+  </section>
+
+  <section class="tarjeta" id="comparacion" hidden>
+    <h2>¿Cuadra la factura?</h2>
+    <p class="ayuda">Los valores de la izquierda salen del PDF, si se han podido leer. Corrige a mano lo que haga falta.</p>
+    <div class="tabla-envoltorio">
+      <table class="tabla" id="tablaFactura">
+        <thead><tr><th>Concepto</th><th>Según la factura</th><th>Según el datalogger</th><th>Diferencia</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="veredicto" id="veredicto"></p>
+    <details class="crudo">
+      <summary>Ver el texto extraído del PDF</summary>
+      <pre id="textoFactura"></pre>
+    </details>
+  </section>
+
+  <section id="graficas" hidden>
+    <div class="tarjeta">
+      <div class="titulo-panel">
+        <h2>Un día en detalle</h2>
+        <div class="navegador-dia">
+          <button type="button" class="btn cuadrado" id="diaAnterior" aria-label="Día anterior">‹</button>
+          <select id="selectorDia" aria-label="Día"></select>
+          <button type="button" class="btn cuadrado" id="diaSiguiente" aria-label="Día siguiente">›</button>
+        </div>
+      </div>
+      <div class="leyenda" id="leyendaDia"></div>
+      <div class="lienzo alto"><canvas id="graficaDia"></canvas></div>
+      <h3 id="tituloBateria">Nivel de la batería</h3>
+      <div class="lienzo bajo"><canvas id="graficaBateria"></canvas></div>
+    </div>
+
+    <div class="tarjeta">
+      <h2>Balance por días</h2>
+      <div class="leyenda" id="leyendaMes"></div>
+      <div class="lienzo medio"><canvas id="graficaMes"></canvas></div>
+    </div>
+
+    <div class="tarjeta">
+      <h2>Cuándo compras a la red</h2>
+      <p class="ayuda">Cada columna es un día y cada fila una hora: cuanto más intenso, más energía comprada.</p>
+      <div class="lienzo medio"><canvas id="graficaCalor"></canvas></div>
+    </div>
+  </section>
+
+</main>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

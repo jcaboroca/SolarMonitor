@@ -1,0 +1,13 @@
+{
+  "name": "Solar Monitor",
+  "short_name": "Solar",
+  "description": "Compara los datos del datalogger fotovoltaico con la factura de la luz, sin salir del navegador.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
+  "icons": [
+    { "src": "assets/icono.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

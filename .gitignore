@@ -1,0 +1,6 @@
+# Datos personales: exportaciones del datalogger y facturas
+muestras/
+*.xlsx
+*.pdf
+
+.DS_Store
