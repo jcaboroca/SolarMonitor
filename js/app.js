@@ -721,27 +721,26 @@ async function bajarDeDatadis() {
   }
   $("bajarDatadis").disabled = true;
   let bajados = 0;
-  let vacios = 0;
   let corte = null;
-  for (const mes of meses) {
-    marcaDatadis(`Bajando ${mes}… (${bajados} de ${meses.length})`);
+  for (const tramo of porAnios(meses)) {
+    const desde = tramo[0];
+    const hasta = tramo[tramo.length - 1];
+    const rotulo = desde === hasta ? desde : `${desde} → ${hasta}`;
+    marcaDatadis(`Bajando ${rotulo}…`);
     try {
-      const curva = await conEspera(mes, () =>
-        datadis.curvaHoraria(suministro.cups, suministro.codigoDistribuidora, mes, suministro.tipoPunto));
-      if (curva.length) {
-        const clave = mes.replace("/", "-");
-        contador.curvas.set(clave, curva);
-        guardarCurva(clave, curva);
-        anotarContador(clave, resumirCurva(curva));
+      const curva = await conEspera(rotulo, () =>
+        datadis.curvaHoraria(suministro.cups, suministro.codigoDistribuidora, desde, hasta, suministro.tipoPunto));
+      for (const [clave, puntos] of agruparPorMes(curva)) {
+        contador.curvas.set(clave, puntos);
+        guardarCurva(clave, puntos);
+        anotarContador(clave, resumirCurva(puntos));
         bajados++;
-      } else {
-        vacios++;
       }
     } catch (error) {
-      corte = { mes, motivo: error.message };
+      corte = { mes: desde, motivo: error.message };
       break;
     }
-    await pausa(400);
+    await pausa(1000);
   }
   $("bajarDatadis").disabled = false;
   if (corte) {
@@ -751,7 +750,8 @@ async function bajarDeDatadis() {
       "error",
     );
   } else if (bajados) {
-    const nota = vacios ? ` · ${vacios} sin datos en datadis` : "";
+    const sinDatos = meses.length - bajados;
+    const nota = sinDatos > 0 ? ` · ${sinDatos} sin datos en datadis` : "";
     marcaDatadis(`Listo · ${bajados} mes${bajados === 1 ? "" : "es"} del contador${nota}`);
   } else {
     marcaDatadis("Datadis no ha devuelto datos de ningún mes de ese rango.", "error");
@@ -760,17 +760,35 @@ async function bajarDeDatadis() {
   refrescarMesesContador();
 }
 
+// Datadis no sirve mas de un anio por peticion, asi que se pide a trozos de doce meses.
+function porAnios(meses) {
+  const tramos = [];
+  for (let desde = 0; desde < meses.length; desde += 12) tramos.push(meses.slice(desde, desde + 12));
+  return tramos;
+}
+
+function agruparPorMes(curva) {
+  const meses = new Map();
+  for (const punto of curva) {
+    const clave = `${punto.instante.getFullYear()}-${String(punto.instante.getMonth() + 1).padStart(2, "0")}`;
+    if (!meses.has(clave)) meses.set(clave, []);
+    meses.get(clave).push(punto);
+  }
+  return meses;
+}
+
 const pausa = (ms) => new Promise((seguir) => setTimeout(seguir, ms));
 
-// Datadis corta a las pocas peticiones seguidas, pero se recupera solo si esperas.
-async function conEspera(mes, intento) {
+// Datadis corta a las pocas peticiones seguidas y su ventana dura minutos, no segundos.
+async function conEspera(rotulo, intento) {
+  const esperas = [60, 120, 240];
   for (let vuelta = 0; ; vuelta++) {
     try {
       return await intento();
     } catch (error) {
-      if (!error.limitado || vuelta === 2) throw error;
-      for (let resto = 30; resto > 0; resto--) {
-        marcaDatadis(`Datadis va saturado. Reintento ${mes} en ${resto} s…`);
+      if (!error.limitado || vuelta >= esperas.length) throw error;
+      for (let resto = esperas[vuelta]; resto > 0; resto--) {
+        marcaDatadis(`Datadis va saturado. Reintento ${rotulo} en ${resto} s…`);
         await pausa(1000);
       }
     }

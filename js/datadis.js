@@ -84,12 +84,12 @@ function instanteDeMedida(fecha, hora) {
 
 const aNumero = (valor) => (Number.isFinite(Number(valor)) ? Number(valor) : 0);
 
-export async function curvaHoraria(cups, codigoDistribuidora, mes, tipoPunto) {
+export async function curvaHoraria(cups, codigoDistribuidora, desde, hasta, tipoPunto) {
   const datos = await pedir("get-consumption-data-v2", {
     cups,
     distributorCode: codigoDistribuidora,
-    startDate: mes,
-    endDate: mes,
+    startDate: desde,
+    endDate: hasta,
     measurementType: 0,
     pointType: tipoPunto,
   });
