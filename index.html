@@ -77,6 +77,28 @@
     </div>
   </section>
 
+  <section class="tarjeta" id="curvaContador" hidden>
+    <div class="titulo-panel">
+      <h2>El contador, hora a hora</h2>
+      <label>Mes
+        <select id="mesContador"></select>
+      </label>
+    </div>
+    <div id="veredictoSolape"></div>
+    <h3>Energía que el contador cuenta dos veces</h3>
+    <p class="ayuda">
+      Cada celda es una hora. Cuanto más roja, más energía registró el contador entrando y saliendo a la vez.
+      Un contador que compensa bien deja este mapa casi vacío, salvo al amanecer y al anochecer.
+    </p>
+    <div class="lienzo medio"><canvas id="mapaSolape"></canvas></div>
+    <div id="cotejoDiario" hidden>
+      <h3>Día a día contra tu instalación</h3>
+      <div class="leyenda" id="leyendaDiaria"></div>
+      <div class="lienzo medio"><canvas id="compraDiaria"></canvas></div>
+      <div class="lienzo medio"><canvas id="vertidoDiario"></canvas></div>
+    </div>
+  </section>
+
   <section class="tarjeta" id="mapeo" hidden>
     <h2>Columnas detectadas</h2>
     <p class="ayuda">Revisa que cada columna esté bien identificada. Lo que no uses, déjalo en «Ignorar».</p>

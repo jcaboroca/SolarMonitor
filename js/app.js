@@ -731,6 +731,81 @@ async function bajarDeDatadis() {
   $("bajarDatadis").disabled = false;
   if (bajados) marcaDatadis(`Listo · ${bajados} mes${bajados === 1 ? "" : "es"} del contador`);
   pintarHistorico();
+  const descargados = [...contador.curvas.keys()].sort();
+  $("mesContador").innerHTML = descargados.map((m) => `<option value="${m}">${nombreMes(m)}</option>`).join("");
+  $("mesContador").value = descargados[descargados.length - 1] ?? "";
+  pintarCurvaContador();
+}
+
+// Un contador que compensa bien nunca registra entrada y salida a la vez en la misma hora.
+function analizarSolape(curva) {
+  const dias = new Map();
+  let horas = 0;
+  let kwh = 0;
+  for (const punto of curva) {
+    const clave = claveDia(punto.instante);
+    if (!dias.has(clave)) dias.set(clave, { clave, matriz: new Array(24).fill(0), kwh: 0 });
+    const dia = dias.get(clave);
+    const solape = Math.min(punto.consumo, punto.vertido);
+    dia.matriz[punto.instante.getHours()] += solape;
+    dia.kwh += solape;
+    kwh += solape;
+    if (solape >= 0.05) horas++;
+  }
+  return { dias: [...dias.values()].sort((a, b) => a.clave.localeCompare(b.clave)), horas, kwh };
+}
+
+// El primer día que se descuelga y ya no vuelve: ahí cambió algo.
+function diaDelCambio(dias) {
+  for (let i = 0; i < dias.length; i++) {
+    if (dias[i].kwh < 1) continue;
+    const siguientes = dias.slice(i + 1, i + 6);
+    if (siguientes.filter((d) => d.kwh >= 1).length >= Math.min(3, siguientes.length)) return dias[i];
+  }
+  return null;
+}
+
+function pintarCurvaContador() {
+  const mes = $("mesContador").value;
+  const curva = contador.curvas.get(mes);
+  $("curvaContador").hidden = !curva;
+  if (!curva) return;
+
+  const { dias, horas, kwh } = analizarSolape(curva);
+  const cambio = diaDelCambio(dias);
+  const total = curva.reduce((suma, p) => suma + p.consumo, 0);
+  $("veredictoSolape").innerHTML =
+    kwh < 2
+      ? `<p class="veredicto bien">En ${nombreMes(mes)} el contador compensa bien: solo ${numero(kwh, 1)} kWh se registraron ` +
+        `entrando y saliendo a la vez, lo normal en las horas de amanecer y anochecer.</p>`
+      : `<p class="veredicto mal">En ${nombreMes(mes)} hay <b>${numero(kwh, 1)} kWh</b> repartidos en ${horas} horas en las que el contador ` +
+        `apuntó energía entrando y saliendo al mismo tiempo. Esa energía te la cobran como comprada y te la pagan como vertida, ` +
+        `cuando en realidad nunca salió de tu casa. Son ${numero((kwh / total) * 100, 0)}% de los ${numero(total, 0)} kWh que te constan comprados ese mes.` +
+        (cambio ? ` Empieza el <b>${cambio.clave}</b>.` : "") +
+        `</p>`;
+
+  mapaCalor($("mapaSolape"), { dias: dias.map((d) => d.clave), matriz: dias.map((d) => d.matriz) });
+
+  const propios = estado.dias?.length ? estado.dias : [];
+  const mismoMes = propios.length && mesDominante(propios.map((d) => d.fecha)) === mes;
+  $("cotejoDiario").hidden = !mismoMes;
+  if (!mismoMes) return;
+
+  const porDia = new Map();
+  for (const punto of curva) {
+    const clave = claveDia(punto.instante);
+    if (!porDia.has(clave)) porDia.set(clave, { compra: 0, vertido: 0 });
+    porDia.get(clave).compra += punto.consumo;
+    porDia.get(clave).vertido += punto.vertido;
+  }
+  const etiquetas = propios.map((d) => String(d.fecha.getDate()));
+  const serie = (rol, campo) => [
+    { nombre: "Instalación", color: COLORES.descarga, valores: propios.map((d) => d[rol]) },
+    { nombre: "Contador", color: COLORES.importada, valores: propios.map((d) => porDia.get(d.clave)?.[campo] ?? 0) },
+  ];
+  leyenda("leyendaDiaria", [["Tu instalación", COLORES.descarga], ["El contador", COLORES.importada]]);
+  barrasAgrupadas($("compraDiaria"), { etiquetas, series: serie("importada", "compra") });
+  barrasAgrupadas($("vertidoDiario"), { etiquetas, series: serie("exportada", "vertido") });
 }
 
 // --- Arranque --------------------------------------------------------------
@@ -773,6 +848,7 @@ pintarHistorico();
 $("accesoDatadis").addEventListener("submit", entrarEnDatadis);
 $("suministroDatadis").addEventListener("change", pintarContrato);
 $("bajarDatadis").addEventListener("click", bajarDeDatadis);
+$("mesContador").addEventListener("change", pintarCurvaContador);
 $("selectorDia").addEventListener("change", pintarDia);
 $("diaAnterior").addEventListener("click", () => moverDia(-1));
 $("diaSiguiente").addEventListener("click", () => moverDia(1));
