@@ -6,6 +6,7 @@ const TEXTO = "#8b98a9";
 
 export const COLORES = {
   produccion: "#f2c94c",
+  produccionTotal: "#ffe9a8",
   autoconsumo: "#f2c94c",
   importada: "#e05a4a",
   exportada: "#43b581",
@@ -75,10 +76,10 @@ function horaCorta(fecha) {
 }
 
 /**
- * Área apilada sobre el tiempo con línea superpuesta opcional y cursor de datos.
+ * Área apilada sobre el tiempo con líneas superpuestas y cursor de datos.
  * capas: [{ clave, nombre, color, valores }] en las mismas posiciones que instantes.
  */
-export function areaApilada(canvas, { instantes, capas, linea, unidad = "W" }) {
+export function areaApilada(canvas, { instantes, capas, lineas = [], unidad = "W" }) {
   const pintar = (indiceCursor) => {
     const { ctx, caja } = preparar(canvas);
     if (!instantes.length) return;
@@ -90,7 +91,7 @@ export function areaApilada(canvas, { instantes, capas, linea, unidad = "W" }) {
       for (const capa of capas) suma += Math.max(capa.valores[i] || 0, 0);
       if (suma > maximo) maximo = suma;
     }
-    if (linea) for (const valor of linea.valores) maximo = Math.max(maximo, valor || 0);
+    for (const linea of lineas) for (const valor of linea.valores) maximo = Math.max(maximo, valor || 0);
     const objetivo = maximo * 1.1 || 1;
     const pasoEje = pasoBonito(objetivo / 4);
     maximo = Math.ceil(objetivo / pasoEje) * pasoEje;
@@ -123,12 +124,14 @@ export function areaApilada(canvas, { instantes, capas, linea, unidad = "W" }) {
       for (let i = 0; i < instantes.length; i++) acumulado[i] += Math.max(capa.valores[i] || 0, 0);
     }
 
-    if (linea) {
+    for (const linea of lineas) {
       ctx.beginPath();
       instantes.forEach((t, i) => (i ? ctx.lineTo(aX(t), aY(linea.valores[i] || 0)) : ctx.moveTo(aX(t), aY(linea.valores[i] || 0))));
+      ctx.setLineDash(linea.discontinua ? [4, 3] : []);
       ctx.strokeStyle = linea.color;
       ctx.lineWidth = 1.5;
       ctx.stroke();
+      ctx.setLineDash([]);
     }
 
     if (indiceCursor != null) {
@@ -170,7 +173,7 @@ export function areaApilada(canvas, { instantes, capas, linea, unidad = "W" }) {
     }
     pintar(indice);
     const formatear = (v) => (Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(2)} kW` : `${Math.round(v)} W`);
-    const filas = [...capas, ...(linea ? [linea] : [])]
+    const filas = [...capas, ...lineas]
       .map((c) => `<span style="--c:${c.color}"></span>${c.nombre}<b>${formatear(c.valores[indice] || 0)}</b>`)
       .join("");
     globo.innerHTML = `<strong>${horaCorta(new Date(instantes[indice]))}</strong>${filas}`;

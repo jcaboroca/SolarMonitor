@@ -338,20 +338,24 @@ function pintarDia() {
   const instantes = registros.map((p) => p.instante.getTime());
 
   leyenda("leyendaDia", [
-    ["Solar directa", COLORES.produccion],
-    ["Batería", COLORES.descarga],
-    ["Red", COLORES.importada],
+    ["Sol → casa", COLORES.produccion],
+    ["Batería → casa", COLORES.descarga],
+    ["Red → casa", COLORES.importada],
+    ["Producción solar total", COLORES.produccionTotal],
     ["Consumo total", COLORES.consumo],
   ]);
 
   areaApilada($("graficaDia"), {
     instantes,
     capas: [
-      { clave: "solarDirecta", nombre: "Solar directa", color: COLORES.produccion, valores: registros.map((p) => p.solarDirecta || 0) },
-      { clave: "descarga", nombre: "Batería", color: COLORES.descarga, valores: registros.map((p) => p.descarga || 0) },
-      { clave: "importada", nombre: "Red", color: COLORES.importada, valores: registros.map((p) => p.importada || 0) },
+      { clave: "solarDirecta", nombre: "Sol → casa", color: COLORES.produccion, valores: registros.map((p) => p.solarDirecta || 0) },
+      { clave: "descarga", nombre: "Batería → casa", color: COLORES.descarga, valores: registros.map((p) => p.descarga || 0) },
+      { clave: "importada", nombre: "Red → casa", color: COLORES.importada, valores: registros.map((p) => p.importada || 0) },
     ],
-    linea: { nombre: "Consumo", color: COLORES.consumo, valores: registros.map((p) => p.consumo || 0) },
+    lineas: [
+      { nombre: "Producción solar", color: COLORES.produccionTotal, discontinua: true, valores: registros.map((p) => p.produccion || 0) },
+      { nombre: "Consumo", color: COLORES.consumo, valores: registros.map((p) => p.consumo || 0) },
+    ],
   });
 
   const tieneSoc = registros.some((p) => p.soc != null);
