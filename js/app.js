@@ -786,11 +786,6 @@ function pintarCurvaContador() {
 
   mapaCalor($("mapaSolape"), { dias: dias.map((d) => d.clave), matriz: dias.map((d) => d.matriz) });
 
-  const propios = estado.dias?.length ? estado.dias : [];
-  const mismoMes = propios.length && mesDominante(propios.map((d) => d.fecha)) === mes;
-  $("cotejoDiario").hidden = !mismoMes;
-  if (!mismoMes) return;
-
   const porDia = new Map();
   for (const punto of curva) {
     const clave = claveDia(punto.instante);
@@ -798,6 +793,14 @@ function pintarCurvaContador() {
     porDia.get(clave).compra += punto.consumo;
     porDia.get(clave).vertido += punto.vertido;
   }
+
+  const propios = estado.dias?.length ? estado.dias : [];
+  const mismoMes = propios.length && mesDominante(propios.map((d) => d.fecha)) === mes;
+  pintarDiasImposibles(porDia, mismoMes ? propios : []);
+
+  $("cotejoDiario").hidden = !mismoMes;
+  if (!mismoMes) return;
+
   const etiquetas = propios.map((d) => String(d.fecha.getDate()));
   const serie = (rol, campo) => [
     { nombre: "Instalación", color: COLORES.descarga, valores: propios.map((d) => d[rol]) },
@@ -806,6 +809,42 @@ function pintarCurvaContador() {
   leyenda("leyendaDiaria", [["Tu instalación", COLORES.descarga], ["El contador", COLORES.importada]]);
   barrasAgrupadas($("compraDiaria"), { etiquetas, series: serie("importada", "compra") });
   barrasAgrupadas($("vertidoDiario"), { etiquetas, series: serie("exportada", "vertido") });
+}
+
+// Nadie puede verter más de lo que genera: si un día se dispara, ese dato está mal.
+function pintarDiasImposibles(porDia, propios) {
+  const caja = $("diasImposibles");
+  const vertidos = [...porDia.values()].map((d) => d.vertido).sort((a, b) => a - b);
+  const centro = vertidos[Math.floor(vertidos.length / 2)] || 0;
+  const produccion = new Map(propios.map((d) => [d.clave, d.produccion]));
+
+  const sospechosos = [];
+  for (const [clave, dia] of porDia) {
+    const techo = produccion.get(clave);
+    const razones = [];
+    if (techo != null && dia.vertido > techo * 1.2 + 2) {
+      razones.push(`ese día tus placas solo generaron ${numero(techo, 1)} kWh`);
+    }
+    if (centro > 0 && dia.vertido > centro * 4) {
+      razones.push(`el resto de días del mes rondan ${numero(centro, 1)} kWh`);
+    }
+    if (razones.length) sospechosos.push({ clave, dia, razones });
+  }
+  caja.hidden = !sospechosos.length;
+  if (!sospechosos.length) return;
+
+  caja.innerHTML =
+    `<p class="veredicto mal">Hay ${sospechosos.length === 1 ? "un día imposible" : `${sospechosos.length} días imposibles`} en la curva del contador. ` +
+    `Nadie puede verter a la red más energía de la que genera, así que ${sospechosos.length === 1 ? "ese dato es" : "esos datos son"} incorrecto${sospechosos.length === 1 ? "" : "s"}.</p>` +
+    `<ul class="lista-avisos">` +
+    sospechosos
+      .map(
+        ({ clave, dia, razones }) =>
+          `<li><b>${clave}</b>: el contador apuntó <b>${numero(dia.vertido, 1)} kWh vertidos</b> y ${numero(dia.compra, 1)} comprados, ` +
+          `cuando ${razones.join(" y ")}.</li>`
+      )
+      .join("") +
+    `</ul>`;
 }
 
 // --- Arranque --------------------------------------------------------------
