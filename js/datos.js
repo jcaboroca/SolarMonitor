@@ -5,10 +5,11 @@ export const ROLES = [
   { clave: "tiempo", etiqueta: "Fecha y hora", patron: /fecha|hora|time|date/ },
   { clave: "produccion", etiqueta: "Producción solar", patron: /produc|solar|\bpv\b|generac|generat/ },
   { clave: "consumo", etiqueta: "Consumo de la casa", patron: /consumption|consumo|load|vivienda/ },
-  { clave: "importada", etiqueta: "Comprada a la red", patron: /purchas|import|compra|buy|bought/ },
-  { clave: "exportada", etiqueta: "Vertida a la red", patron: /feed.?in|export|vertid|excedent|sell|sold/ },
+  { clave: "importada", etiqueta: "Comprada a la red", patron: /purchas|import|compra|buy|bought|adquisitiv/ },
+  { clave: "exportada", etiqueta: "Vertida a la red", patron: /feed.?in|export|vertid|excedent|sell|sold|alimentaci/ },
   { clave: "red", etiqueta: "Red (con signo)", patron: /grid|\bred\b/ },
-  { clave: "carga", etiqueta: "Carga de batería", patron: /charg(e|ing)_?power|carga.*bater|battery.*charg/ },
+  // \bcarga\b no pica en "descarga": no hay frontera de palabra dentro de "descarga".
+  { clave: "carga", etiqueta: "Carga de batería", patron: /charg(e|ing)_?power|\bcarga\b|carga.*bater|battery.*charg/ },
   { clave: "descarga", etiqueta: "Descarga de batería", patron: /dischar|descarga/ },
   { clave: "bateria", etiqueta: "Batería (con signo)", patron: /batter|bater/ },
   { clave: "soc", etiqueta: "Nivel de batería (%)", patron: /\bsoc\b|state.?of.?charge|nivel/ },
@@ -17,6 +18,10 @@ export const ROLES = [
 const ROLES_ENERGIA = new Set([
   "produccion", "consumo", "importada", "exportada", "red", "carga", "descarga", "bateria",
 ]);
+
+// Columnas que son magnitudes, no valores con signo: hay dataloggers que las
+// escriben en negativo solo para marcar el sentido (vertido, carga).
+const MAGNITUDES = new Set(["importada", "exportada", "carga", "descarga"]);
 
 export function unidadDeCabecera(cabecera) {
   const texto = String(cabecera).toLowerCase();
@@ -107,6 +112,7 @@ export function construirSerie(filas, roles, unidades, { invertirRed = false, in
       let valor = aNumero(fila[columna]);
       const unidad = unidades[columna];
       if (unidad === "kW") valor *= 1000;
+      if (MAGNITUDES.has(rol)) valor = Math.abs(valor);
       punto[rol] = valor;
     }
     if (invertirRed) {

@@ -3,7 +3,7 @@ import {
   ROLES, detectarRoles, unidadDeCabecera, construirSerie, energiaKwh,
   repartoPorPeriodo, resumenPorDia, claveDia,
 } from "./datos.js";
-import { textoDelPdf, interpretarFactura } from "./factura.js";
+import { textoDelPdf, interpretarFactura, revisarFactura, lecturasFrenteAFacturado } from "./factura.js";
 import { areaApilada, barrasApiladas, mapaCalor, lineaSimple, COLORES } from "./graficas.js";
 
 const $ = (id) => document.getElementById(id);
@@ -87,6 +87,7 @@ async function cargarFactura(fichero) {
     estado.factura.texto = texto;
     marca.textContent = `${fichero.name} · datos extraídos`;
     pintarComparacion();
+    pintarRevision();
   } catch (error) {
     marca.className = "estado error";
     marca.textContent = error.message;
@@ -177,6 +178,8 @@ function totales() {
     importada: kwh("importada"),
     exportada: kwh("exportada"),
     autoconsumo: kwh("autoconsumo"),
+    carga: kwh("carga"),
+    descarga: kwh("descarga"),
     cobertura: consumo > 0 ? (1 - kwh("importada") / consumo) * 100 : 0,
   };
 }
@@ -283,7 +286,7 @@ function pintarDesvios() {
     return;
   }
   const desvio = Math.abs(veredicto);
-  const nota = notaPeriodo();
+  const nota = notaPeriodo() + notaMedicion();
   if (desvio <= 3) {
     caja.className = "veredicto bien";
     caja.textContent = `La factura cuadra: solo ${numero(desvio, 1)} % de diferencia con lo que midió tu instalación. ${nota}`;
@@ -292,8 +295,132 @@ function pintarDesvios() {
     caja.textContent = `Diferencia del ${numero(desvio, 1)} %. Entra dentro de lo esperable por pérdidas y por dónde mide cada aparato, pero conviene mirarlo. ${nota}`;
   } else {
     caja.className = "veredicto mal";
-    caja.textContent = `Diferencia del ${numero(desvio, 1)} %: demasiada. Revisa el periodo facturado, si hay lecturas estimadas y el reparto por periodos. ${nota}`;
+    caja.textContent = `Diferencia del ${numero(desvio, 1)} %: demasiada. Antes de reclamar, mira la revisión de las cuentas de la factura y el aviso de medición. ${nota}`;
   }
+}
+
+// El datalogger hace una foto cada pocos minutos: los picos cortos de compra y
+// venta se le escapan aunque el contador sí los registre. Si su propio balance
+// no cierra, sus kWh de red no sirven para acusar a nadie.
+function notaMedicion() {
+  const t = totales();
+  const descuadre = t.produccion + t.importada + t.descarga - t.consumo - t.exportada - t.carga;
+  const relativo = t.consumo > 0 ? (descuadre / t.consumo) * 100 : 0;
+  if (Math.abs(relativo) < 5) return "";
+  return (
+    ` Ojo: los datos del datalogger no cuadran ni consigo mismos (bailan ${numero(Math.abs(descuadre))} kWh,` +
+    ` un ${numero(Math.abs(relativo), 0)} % del consumo). Con una muestra cada ${estado.serie.pasoMinutos} minutos se pierden` +
+    ` los picos cortos de compra y venta, así que aquí sus kWh de red son orientativos y el contador manda.`
+  );
+}
+
+// --- Revisión interna de la factura ---------------------------------------
+
+const euros = (valor) => (Number.isFinite(valor) ? `${numero(valor, 2)} €` : "—");
+
+function pintarRevision() {
+  const f = estado.factura;
+  const seccion = $("revision");
+  const puntos = f ? revisarFactura(f) : [];
+  if (!puntos.length) {
+    seccion.hidden = true;
+    return;
+  }
+  seccion.hidden = false;
+
+  const cuerpo = $("tablaRevision").querySelector("tbody");
+  cuerpo.textContent = "";
+  for (const punto of puntos) {
+    const fila = document.createElement("tr");
+    fila.innerHTML =
+      `<td>${punto.concepto}</td>` +
+      `<td class="numero">${numero(punto.esperado, 2)}</td>` +
+      `<td class="numero">${numero(punto.segunFactura, 2)}</td>` +
+      `<td class="numero ${punto.ok ? "desvio-bien" : "desvio-mal"}">${punto.ok ? "cuadra" : "no cuadra"}</td>`;
+    cuerpo.appendChild(fila);
+  }
+
+  const fallos = puntos.filter((p) => !p.ok);
+  const caja = $("veredictoRevision");
+  caja.className = `veredicto ${fallos.length ? "mal" : "bien"}`;
+  caja.textContent = fallos.length
+    ? `${fallos.length} de ${puntos.length} operaciones no cuadran. Eso sí es un error de facturación: reclama con esta lista.`
+    : `Las ${puntos.length} operaciones de la factura cuadran entre sí. Si el importe te chirría, mira los kWh y los precios de abajo, no la aritmética.`;
+
+  pintarLecturas(f);
+  pintarAvisosFactura(f);
+}
+
+function pintarLecturas(f) {
+  const filas = lecturasFrenteAFacturado(f);
+  const caja = $("lecturas");
+  if (!filas.length) {
+    caja.textContent = "";
+    return;
+  }
+  const total = filas.reduce((suma, fila) => suma + fila.diferencia, 0);
+  const precio = f.precio.P1 ?? 0;
+  caja.innerHTML =
+    `<h3>Lo que marcó el contador y lo que te facturaron</h3>` +
+    `<div class="tabla-envoltorio"><table class="tabla">` +
+    `<thead><tr><th>Periodo</th><th>Contador</th><th>Facturado</th><th>Diferencia</th></tr></thead><tbody>` +
+    filas
+      .map(
+        (fila) =>
+          `<tr><td>${fila.periodo}${fila.estimada ? " ⚠️ estimada" : ""}</td>` +
+          `<td class="numero">${numero(fila.leido)} kWh</td>` +
+          `<td class="numero">${numero(fila.facturado)} kWh</td>` +
+          `<td class="numero ${fila.diferencia > 0 ? "desvio-mal" : ""}">${fila.diferencia > 0 ? "+" : ""}${numero(fila.diferencia)} kWh</td></tr>`
+      )
+      .join("") +
+    `</tbody></table></div>` +
+    `<p class="ayuda">${
+      total > 0
+        ? `Te han facturado ${numero(total)} kWh más de los que marcó el contador (${euros(total * precio)}). Pídeles explicación.`
+        : total < 0
+          ? `Te han facturado ${numero(-total)} kWh menos de los que marcó el contador: a tu favor.`
+          : "Coincide con la lectura del contador."
+    }</p>`;
+}
+
+function pintarAvisosFactura(f) {
+  const avisos = [];
+
+  if (f.excedentes != null && f.precioExcedentes != null) {
+    const cobrado = f.excedentes * f.precioExcedentes;
+    const alPrecioDeCompra = f.precio.P1 != null ? f.excedentes * f.precio.P1 : null;
+    const linea =
+      `Te compensan los excedentes a ${numero(f.precioExcedentes * 100, 4)} c€/kWh. ` +
+      `Vertiste ${numero(f.excedentes)} kWh y te devolvieron ${euros(cobrado)}.`;
+    if (f.precioExcedentes < 0.03) {
+      avisos.push([
+        "mal",
+        `${linea} Es una tarifa de compensación muy baja: lo habitual está entre 5 y 10 c€/kWh.` +
+          (alPrecioDeCompra ? ` A lo que tú pagas la luz, esos kWh valdrían ${euros(alPrecioDeCompra)}.` : ""),
+      ]);
+    } else {
+      avisos.push(["bien", linea]);
+    }
+  }
+
+  const excesos = ["P1", "P2"].filter(
+    (p) => f.potenciaMaxima[p] != null && f.potenciaContratada[p] != null && f.potenciaMaxima[p] > f.potenciaContratada[p]
+  );
+  if (excesos.length) {
+    avisos.push([
+      "regular",
+      `Has llegado a demandar ${excesos.map((p) => `${numero(f.potenciaMaxima[p], 2)} kW en ${p}`).join(" y ")} ` +
+        `con ${numero(f.potenciaContratada.P1, 2)} kW contratados. No te lo penalizan en la factura, pero es lo que hace saltar el diferencial.`,
+    ]);
+  }
+
+  if (Object.values(f.lecturas).some((l) => l?.estimada)) {
+    avisos.push(["mal", "Hay lecturas estimadas: el consumo facturado no viene de una lectura real del contador."]);
+  }
+
+  $("avisosFactura").innerHTML = avisos
+    .map(([tono, texto]) => `<p class="veredicto ${tono}">${texto}</p>`)
+    .join("");
 }
 
 // Comparar dos periodos distintos no significa nada, así que se avisa.
