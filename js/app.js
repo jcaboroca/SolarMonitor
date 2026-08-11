@@ -474,15 +474,25 @@ function pintarHistorico() {
 
   for (const fila of filas) {
     const tr = document.createElement("tr");
-    const trio = (instalacion, contador, factura) =>
-      `<td class="numero trio">${numero(instalacion, 0)} / ` +
-      `<b>${contador == null ? "—" : numero(contador, 0)}</b> / ` +
-      `${numero(factura, 0)}</td>`;
+    const celda = (instalacion, contador, factura) => {
+      const aparte = [];
+      if (Number.isFinite(instalacion)) aparte.push(`casa ${numero(instalacion, 0)}`);
+      if (Number.isFinite(factura)) aparte.push(`factura ${numero(factura, 0)}`);
+      const principal = [contador, factura, instalacion].find((v) => Number.isFinite(v));
+      return (
+        `<td class="numero dato"><b>${principal == null ? "—" : numero(principal, 0)}</b>` +
+        (aparte.length ? `<small class="fuentes">${aparte.join(" · ")}</small>` : "") +
+        `</td>`
+      );
+    };
+    const c = fila.contador;
+    const sello = c?.horas && c.estimadas === c.horas ? ` <span class="sello">estimado</span>` : "";
+    const produccion = Number.isFinite(fila.medido?.produccion) ? `${numero(fila.medido.produccion, 0)} kWh` : "—";
     tr.innerHTML =
-      `<td>${nombreMes(fila.mes)}<br><small class="tenue">${fila.dias} días</small></td>` +
-      `<td class="numero">${numero(fila.medido?.produccion)} kWh</td>` +
-      trio(fila.medido?.total, fila.contador?.total, fila.factura?.total) +
-      trio(fila.medido?.excedentes, fila.contador?.vertido, fila.factura?.excedentes) +
+      `<td>${nombreMes(fila.mes)}${sello}<br><small class="tenue">${fila.dias} días</small></td>` +
+      `<td class="numero">${produccion}</td>` +
+      celda(fila.medido?.total, fila.contador?.total, fila.factura?.total) +
+      celda(fila.medido?.excedentes, fila.contador?.vertido, fila.factura?.excedentes) +
       `<td class="numero">${euros(fila.factura?.importe)}</td>` +
       `<td class="numero"><button type="button" class="btn cuadrado" data-borrar="${fila.mes}" aria-label="Borrar ${nombreMes(fila.mes)}">×</button></td>`;
     cuerpo.appendChild(tr);
@@ -832,15 +842,21 @@ function pintarCurvaContador() {
   const { dias, horas, kwh } = analizarSolape(curva);
   const cambio = diaDelCambio(dias);
   const total = curva.reduce((suma, p) => suma + p.consumo, 0);
-  $("veredictoSolape").innerHTML =
+  const resumen = leerHistorico().find((m) => m.mes === mes)?.contador;
+  const inventado = Boolean(resumen?.horas) && resumen.estimadas === resumen.horas;
+  const solape =
     kwh < 2
       ? `<p class="veredicto bien">En ${nombreMes(mes)} el contador compensa bien: solo ${numero(kwh, 1)} kWh se registraron ` +
         `entrando y saliendo a la vez, lo normal en las horas de amanecer y anochecer.</p>`
-      : `<p class="veredicto mal">En ${nombreMes(mes)} hay <b>${numero(kwh, 1)} kWh</b> repartidos en ${horas} horas en las que el contador ` +
-        `apuntó energía entrando y saliendo al mismo tiempo. Esa energía te la cobran como comprada y te la pagan como vertida, ` +
-        `cuando en realidad nunca salió de tu casa. Son ${numero((kwh / total) * 100, 0)}% de los ${numero(total, 0)} kWh que te constan comprados ese mes.` +
-        (cambio ? ` Empieza el <b>${cambio.clave}</b>.` : "") +
-        `</p>`;
+      : inventado
+        ? `<p class="veredicto regular">Hay ${numero(kwh, 1)} kWh en ${horas} horas con energía entrando y saliendo a la vez. ` +
+          `Como el mes está estimado entero, eso lo ha producido el cálculo de la distribuidora, no tu contador.</p>`
+        : `<p class="veredicto mal">En ${nombreMes(mes)} hay <b>${numero(kwh, 1)} kWh</b> repartidos en ${horas} horas en las que el contador ` +
+          `apuntó energía entrando y saliendo al mismo tiempo. Esa energía te la cobran como comprada y te la pagan como vertida, ` +
+          `cuando en realidad nunca salió de tu casa. Son ${numero((kwh / total) * 100, 0)}% de los ${numero(total, 0)} kWh que te constan comprados ese mes.` +
+          (cambio ? ` Empieza el <b>${cambio.clave}</b>.` : "") +
+          `</p>`;
+  $("veredictoSolape").innerHTML = panelEstimado(mes) + solape;
 
   mapaCalor($("mapaSolape"), { dias: dias.map((d) => d.clave), matriz: dias.map((d) => d.matriz) });
 
@@ -867,6 +883,39 @@ function pintarCurvaContador() {
   leyenda("leyendaDiaria", [["Tu instalación", COLORES.descarga], ["El contador", COLORES.importada]]);
   barrasAgrupadas($("compraDiaria"), { etiquetas, series: serie("importada", "compra") });
   barrasAgrupadas($("vertidoDiario"), { etiquetas, series: serie("exportada", "vertido") });
+}
+
+// Datadis marca cada hora como medida o estimada: un mes estimado entero no es una lectura.
+function panelEstimado(mes) {
+  const meses = leerHistorico();
+  const fila = meses.find((m) => m.mes === mes);
+  const c = fila?.contador;
+  if (!c?.horas || !c.estimadas) return "";
+
+  const medidas = Math.round(((c.horas - c.estimadas) / c.horas) * 100);
+  const enMeses = (clave) => Number(clave.slice(0, 4)) * 12 + Number(clave.slice(5, 7));
+  // A igual distancia gana el mes posterior: refleja la instalación tal y como está hoy.
+  const referencia = meses
+    .filter((m) => m.mes !== mes && m.contador?.horas && !m.contador.estimadas && m.contador.dias >= 28)
+    .sort((a, b) => {
+      const cerca = Math.abs(enMeses(a.mes) - enMeses(mes)) - Math.abs(enMeses(b.mes) - enMeses(mes));
+      return cerca || enMeses(b.mes) - enMeses(a.mes);
+    })[0];
+
+  const cifras = [[numero(c.total, 0), "kWh que te facturan"]];
+  if (Number.isFinite(fila.medido?.total)) cifras.push([numero(fila.medido.total, 0), "kWh midió tu casa"]);
+  if (referencia) cifras.push([numero(referencia.contador.total, 0), `kWh en ${nombreMes(referencia.mes)}, con lectura real`]);
+
+  return (
+    `<div class="titular ${medidas === 0 ? "mal" : "regular"}">` +
+    `<p class="titular-etiqueta">${nombreMes(mes)} en tu contador</p>` +
+    `<p class="titular-cifra">${medidas}%</p>` +
+    `<p class="titular-pie">de las ${c.horas} horas del mes son una lectura real. ` +
+    `El resto lo ha calculado la distribuidora estimando, y aun así es lo que se factura.</p>` +
+    `<div class="titular-cifras">` +
+    cifras.map(([valor, pie]) => `<div><b>${valor}</b><small>${pie}</small></div>`).join("") +
+    `</div></div>`
+  );
 }
 
 // Nadie puede verter más de lo que genera: si un día se dispara, ese dato está mal.
