@@ -99,6 +99,10 @@ label { font-size: 13px; color: var(--apagado); display: inline-flex; gap: 6px; 
 .btn.primario { background: var(--acento); border-color: var(--acento); color: #1a1400; font-weight: 600; }
 .btn.primario:hover { filter: brightness(1.08); }
 .btn.cuadrado { padding: 6px 11px; line-height: 1; font-size: 16px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+
+.acciones { display: flex; flex-wrap: wrap; gap: 8px; }
+.tenue { color: var(--apagado); }
 
 .fichas { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .ficha {
@@ -127,6 +131,7 @@ label { font-size: 13px; color: var(--apagado); display: inline-flex; gap: 6px; 
 .pista b { text-align: right; font-variant-numeric: tabular-nums; }
 
 .leyenda { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--apagado); margin-bottom: 10px; }
+.leyenda[hidden] { display: none; }
 .leyenda i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
 
 .veredicto { margin: 14px 0 0; padding: 12px; border-radius: 10px; font-size: 14px; border: 1px solid var(--borde); }

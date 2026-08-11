@@ -4,7 +4,8 @@ import {
   repartoPorPeriodo, resumenPorDia, claveDia,
 } from "./datos.js";
 import { textoDelPdf, interpretarFactura, revisarFactura, lecturasFrenteAFacturado } from "./factura.js";
-import { areaApilada, barrasApiladas, mapaCalor, lineaSimple, COLORES } from "./graficas.js";
+import { areaApilada, barrasApiladas, barrasAgrupadas, mapaCalor, lineaSimple, COLORES } from "./graficas.js";
+import { leerHistorico, guardarMes, borrarMes, importarHistorico, analizarHistorico, mesDominante, nombreMes } from "./historico.js";
 
 const $ = (id) => document.getElementById(id);
 const estado = { cabeceras: [], filas: [], roles: [], unidades: [], serie: null, dias: [], factura: null };
@@ -86,8 +87,9 @@ async function cargarFactura(fichero) {
     estado.factura = interpretarFactura(texto);
     estado.factura.texto = texto;
     marca.textContent = `${fichero.name} · datos extraídos`;
-    pintarComparacion();
+    pintarComparacion(true);
     pintarRevision();
+    pintarHistorico();
   } catch (error) {
     marca.className = "estado error";
     marca.textContent = error.message;
@@ -166,6 +168,7 @@ function recalcular() {
   pintarFichas();
   pintarComparacion();
   prepararGraficas();
+  pintarHistorico();
 }
 
 function totales() {
@@ -217,7 +220,8 @@ function valorFactura(clave) {
   return Number.isFinite(valor) ? valor : null;
 }
 
-function pintarComparacion() {
+// Al leer un PDF nuevo mandan sus cifras; si no, se respeta lo escrito a mano.
+function pintarComparacion(refrescarFactura = false) {
   if (!estado.serie) return;
   const { registros, unidadesRol } = estado.serie;
   const reparto = repartoPorPeriodo(registros, "importada", unidadesRol.importada, estado.festivos);
@@ -242,7 +246,7 @@ function pintarComparacion() {
   const cuerpo = $("tablaFactura").querySelector("tbody");
   cuerpo.textContent = "";
   for (const concepto of CONCEPTOS) {
-    const anterior = valorFactura(concepto.clave);
+    const anterior = refrescarFactura ? null : valorFactura(concepto.clave);
     const valor = anterior ?? deLaFactura[concepto.clave];
     const fila = document.createElement("tr");
     fila.innerHTML =
@@ -423,6 +427,98 @@ function pintarAvisosFactura(f) {
     .join("");
 }
 
+// --- Histórico mes a mes ---------------------------------------------------
+
+function componerMes() {
+  if (!estado.serie || !estado.dias.length) return null;
+  const mes = mesDominante(estado.dias.map((d) => d.fecha));
+  if (!mes) return null;
+  const t = totales();
+  const f = estado.factura;
+  return {
+    mes,
+    dias: estado.dias.length,
+    desde: estado.dias[0].fecha.toISOString(),
+    hasta: estado.dias[estado.dias.length - 1].fecha.toISOString(),
+    medido: {
+      ...estado.medido,
+      produccion: t.produccion,
+      consumo: t.consumo,
+    },
+    factura: {
+      P1: valorFactura("P1"),
+      P2: valorFactura("P2"),
+      P3: valorFactura("P3"),
+      total: valorFactura("total"),
+      excedentes: valorFactura("excedentes"),
+      lecturas: f?.lecturas ?? null,
+      precioEnergia: f?.precio?.P1 ?? null,
+      precioExcedentes: f?.precioExcedentes ?? null,
+      importe: f?.total ?? null,
+      referencia: f?.referencia ?? null,
+    },
+    guardado: new Date().toISOString(),
+  };
+}
+
+function pintarHistorico() {
+  const meses = leerHistorico();
+  const hayDatos = Boolean(estado.serie);
+  $("historico").hidden = !meses.length && !hayDatos;
+  $("guardarMes").disabled = !hayDatos;
+
+  const { filas, avisos } = analizarHistorico(meses);
+  const cuerpo = $("tablaHistorico").querySelector("tbody");
+  cuerpo.textContent = "";
+
+  for (const fila of filas) {
+    const tr = document.createElement("tr");
+    const veces = (valor) =>
+      valor == null
+        ? `<td class="numero">—</td>`
+        : `<td class="numero ${valor > 1.3 ? "desvio-mal" : valor > 1.15 ? "" : "desvio-bien"}">×${numero(valor, 2)}</td>`;
+    tr.innerHTML =
+      `<td>${nombreMes(fila.mes)}<br><small class="tenue">${fila.dias} días</small></td>` +
+      `<td class="numero">${numero(fila.medido?.produccion)} kWh</td>` +
+      `<td class="numero">${numero(fila.medido?.total)} / ${numero(fila.factura?.total)}</td>` +
+      veces(fila.razonCompra) +
+      `<td class="numero">${numero(fila.medido?.excedentes)} / ${numero(fila.factura?.excedentes)}</td>` +
+      veces(fila.razonVertido) +
+      `<td class="numero">${euros(fila.factura?.importe)}</td>` +
+      `<td class="numero"><button type="button" class="btn cuadrado" data-borrar="${fila.mes}" aria-label="Borrar ${nombreMes(fila.mes)}">×</button></td>`;
+    cuerpo.appendChild(tr);
+  }
+
+  cuerpo.querySelectorAll("[data-borrar]").forEach((boton) =>
+    boton.addEventListener("click", () => {
+      borrarMes(boton.dataset.borrar);
+      pintarHistorico();
+    })
+  );
+
+  $("avisosHistorico").innerHTML = avisos.map(([tono, texto]) => `<p class="veredicto ${tono}">${texto}</p>`).join("");
+  pintarGraficaHistorico(filas);
+}
+
+function pintarGraficaHistorico(filas) {
+  const lienzo = $("graficaHistorico").parentElement;
+  lienzo.hidden = filas.length < 2;
+  $("leyendaHistorico").hidden = filas.length < 2;
+  if (filas.length < 2) return;
+
+  leyenda("leyendaHistorico", [
+    ["Comprado según tu instalación", COLORES.descarga],
+    ["Comprado según la factura", COLORES.importada],
+  ]);
+  barrasAgrupadas($("graficaHistorico"), {
+    etiquetas: filas.map((f) => nombreMes(f.mes).split(" ")[0]),
+    series: [
+      { nombre: "Medido", color: COLORES.descarga, valores: filas.map((f) => f.medido?.total ?? 0) },
+      { nombre: "Facturado", color: COLORES.importada, valores: filas.map((f) => f.factura?.total ?? 0) },
+    ],
+  });
+}
+
 // Comparar dos periodos distintos no significa nada, así que se avisa.
 function notaPeriodo() {
   const dias = estado.dias.length;
@@ -523,6 +619,38 @@ function pintarMes() {
 conectarZona("soltarDatos", "ficheroDatos", cargarDatos);
 conectarZona("soltarFactura", "ficheroFactura", cargarFactura);
 $("recalcular").addEventListener("click", recalcular);
+
+$("guardarMes").addEventListener("click", () => {
+  const registro = componerMes();
+  if (!registro) return;
+  guardarMes(registro);
+  pintarHistorico();
+  avisar(`Guardado ${nombreMes(registro.mes)}. Cuando tengas varios meses, la tabla enseña cuál se sale del patrón.`);
+});
+
+$("exportarHistorico").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(leerHistorico(), null, 2)], { type: "application/json" });
+  const enlace = document.createElement("a");
+  enlace.href = URL.createObjectURL(blob);
+  enlace.download = "solar-monitor-historico.json";
+  enlace.click();
+  URL.revokeObjectURL(enlace.href);
+});
+
+$("ficheroHistorico").addEventListener("change", async (evento) => {
+  const fichero = evento.target.files[0];
+  if (!fichero) return;
+  try {
+    importarHistorico(await fichero.text());
+    pintarHistorico();
+    avisar("Copia restaurada.");
+  } catch (error) {
+    avisar(`No se ha podido leer la copia: ${error.message}`);
+  }
+  evento.target.value = "";
+});
+
+pintarHistorico();
 $("selectorDia").addEventListener("change", pintarDia);
 $("diaAnterior").addEventListener("click", () => moverDia(-1));
 $("diaSiguiente").addEventListener("click", () => moverDia(1));

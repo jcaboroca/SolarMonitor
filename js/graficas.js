@@ -229,6 +229,40 @@ export function barrasApiladas(canvas, { etiquetas, capas, unidad = "kWh" }) {
   ctx.fillText(unidad, caja.x1, caja.y0 - 12);
 }
 
+/** Barras enfrentadas por grupo. series: [{ nombre, color, valores }] */
+export function barrasAgrupadas(canvas, { etiquetas, series, unidad = "kWh" }) {
+  const { ctx, caja } = preparar(canvas);
+  if (!etiquetas.length) return;
+
+  let maximo = 0;
+  for (const serie of series) for (const valor of serie.valores) maximo = Math.max(maximo, valor || 0);
+  const paso = pasoBonito(maximo / 4 || 1);
+  maximo = Math.ceil(maximo / paso) * paso || 1;
+  ejeVertical(ctx, caja, 0, maximo, (v) => `${v.toFixed(v < 10 ? 1 : 0)}`);
+
+  const anchoHueco = (caja.x1 - caja.x0) / etiquetas.length;
+  const anchoBarra = Math.max((anchoHueco * 0.7) / series.length, 2);
+
+  series.forEach((serie, s) => {
+    ctx.fillStyle = serie.color;
+    for (let i = 0; i < etiquetas.length; i++) {
+      const valor = Math.max(serie.valores[i] || 0, 0);
+      if (!valor) continue;
+      const centro = caja.x0 + i * anchoHueco + anchoHueco / 2;
+      const x = centro + (s - series.length / 2) * anchoBarra;
+      const altura = (valor / maximo) * (caja.y1 - caja.y0);
+      ctx.fillRect(x, caja.y1 - altura, anchoBarra - 1, altura);
+    }
+  });
+
+  ctx.fillStyle = TEXTO;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  etiquetas.forEach((etiqueta, i) => ctx.fillText(etiqueta, caja.x0 + i * anchoHueco + anchoHueco / 2, caja.y1 + 6));
+  ctx.textAlign = "right";
+  ctx.fillText(unidad, caja.x1, caja.y0 - 12);
+}
+
 /** Mapa de calor día (columnas) × hora (filas). */
 export function mapaCalor(canvas, { dias, matriz, color = "#e05a4a" }) {
   const { ctx, caja } = preparar(canvas);

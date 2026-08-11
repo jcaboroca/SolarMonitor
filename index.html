@@ -97,6 +97,33 @@
     <div id="avisosFactura"></div>
   </section>
 
+  <section class="tarjeta" id="historico" hidden>
+    <div class="titulo-panel">
+      <h2>Mes a mes</h2>
+      <div class="acciones">
+        <button class="btn primario" type="button" id="guardarMes">Guardar este mes</button>
+        <button class="btn" type="button" id="exportarHistorico">Descargar copia</button>
+        <label class="btn" for="ficheroHistorico">Restaurar copia</label>
+        <input type="file" id="ficheroHistorico" accept=".json" hidden>
+      </div>
+    </div>
+    <p class="ayuda">Se guarda solo el resumen de cada mes en este navegador. Un mes suelto no dice nada; el patrón de varios meses es lo que delata al que se sale.</p>
+    <div id="avisosHistorico"></div>
+    <div class="tabla-envoltorio">
+      <table class="tabla" id="tablaHistorico">
+        <thead><tr>
+          <th>Mes</th><th>Producido</th>
+          <th>Comprado<br><small>medido / facturado</small></th><th>Veces</th>
+          <th>Vertido<br><small>medido / facturado</small></th><th>Veces</th>
+          <th>Importe</th><th></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="leyenda" id="leyendaHistorico"></div>
+    <div class="lienzo medio"><canvas id="graficaHistorico"></canvas></div>
+  </section>
+
   <section id="graficas" hidden>
     <div class="tarjeta">
       <div class="titulo-panel">
