@@ -2,6 +2,7 @@
 // Solo se guarda el resumen: ni el .xlsx ni el PDF salen de aquí ni se almacenan.
 
 const CLAVE = "solar-monitor-historico";
+const CLAVE_CURVAS = "solar-monitor-curvas";
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 
 export const nombreMes = (mes) => {
@@ -32,7 +33,46 @@ export function guardarMes(registro) {
 export function borrarMes(mes) {
   const meses = leerHistorico().filter((m) => m.mes !== mes);
   escribir(meses);
+  const curvas = curvasCrudas();
+  delete curvas[mes];
+  localStorage.setItem(CLAVE_CURVAS, JSON.stringify(curvas));
   return meses;
+}
+
+const curvasCrudas = () => {
+  try {
+    return JSON.parse(localStorage.getItem(CLAVE_CURVAS) || "{}");
+  } catch {
+    return {};
+  }
+};
+
+// Cada hora se guarda como [horas desde 1970, comprado, vertido, real] para que quepa.
+export function leerCurvas() {
+  const curvas = new Map();
+  for (const [mes, puntos] of Object.entries(curvasCrudas())) {
+    if (!Array.isArray(puntos)) continue;
+    curvas.set(
+      mes,
+      puntos.map(([hora, consumo, vertido, real]) => ({
+        instante: new Date(hora * 3600000),
+        consumo,
+        vertido,
+        real: Boolean(real),
+      }))
+    );
+  }
+  return curvas;
+}
+
+export function guardarCurva(mes, curva) {
+  const curvas = curvasCrudas();
+  curvas[mes] = curva.map((p) => [Math.round(p.instante.getTime() / 3600000), +p.consumo.toFixed(3), +p.vertido.toFixed(3), p.real ? 1 : 0]);
+  try {
+    localStorage.setItem(CLAVE_CURVAS, JSON.stringify(curvas));
+  } catch {
+    throw new Error("No cabe más histórico en este navegador. Borra algún mes antiguo.");
+  }
 }
 
 export function importarHistorico(texto) {

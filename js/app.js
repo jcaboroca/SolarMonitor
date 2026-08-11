@@ -5,7 +5,7 @@ import {
 } from "./datos.js";
 import { textoDelPdf, interpretarFactura, revisarFactura, lecturasFrenteAFacturado } from "./factura.js";
 import { areaApilada, barrasApiladas, barrasAgrupadas, mapaCalor, lineaSimple, COLORES } from "./graficas.js";
-import { leerHistorico, guardarMes, borrarMes, importarHistorico, analizarHistorico, mesDominante, nombreMes } from "./historico.js";
+import { leerHistorico, guardarMes, borrarMes, importarHistorico, analizarHistorico, mesDominante, nombreMes, leerCurvas, guardarCurva } from "./historico.js";
 import * as datadis from "./datadis.js";
 
 const $ = (id) => document.getElementById(id);
@@ -617,7 +617,15 @@ function pintarMes() {
 
 // --- Contador (datadis) ----------------------------------------------------
 
-const contador = { suministros: [], curvas: new Map() };
+const contador = { suministros: [], curvas: leerCurvas() };
+
+function refrescarMesesContador() {
+  const descargados = [...contador.curvas.keys()].sort();
+  const elegido = $("mesContador").value;
+  $("mesContador").innerHTML = descargados.map((m) => `<option value="${m}">${nombreMes(m)}</option>`).join("");
+  $("mesContador").value = descargados.includes(elegido) ? elegido : descargados[descargados.length - 1] ?? "";
+  pintarCurvaContador();
+}
 
 function marcaDatadis(texto, tono = "") {
   const marca = $("estadoDatadis");
@@ -718,8 +726,10 @@ async function bajarDeDatadis() {
     try {
       const curva = await datadis.curvaHoraria(suministro.cups, suministro.codigoDistribuidora, mes, suministro.tipoPunto);
       if (curva.length) {
-        contador.curvas.set(mes.replace("/", "-"), curva);
-        anotarContador(mes.replace("/", "-"), resumirCurva(curva));
+        const clave = mes.replace("/", "-");
+        contador.curvas.set(clave, curva);
+        guardarCurva(clave, curva);
+        anotarContador(clave, resumirCurva(curva));
         bajados++;
       }
     } catch (error) {
@@ -731,10 +741,7 @@ async function bajarDeDatadis() {
   $("bajarDatadis").disabled = false;
   if (bajados) marcaDatadis(`Listo · ${bajados} mes${bajados === 1 ? "" : "es"} del contador`);
   pintarHistorico();
-  const descargados = [...contador.curvas.keys()].sort();
-  $("mesContador").innerHTML = descargados.map((m) => `<option value="${m}">${nombreMes(m)}</option>`).join("");
-  $("mesContador").value = descargados[descargados.length - 1] ?? "";
-  pintarCurvaContador();
+  refrescarMesesContador();
 }
 
 // Un contador que compensa bien nunca registra entrada y salida a la vez en la misma hora.
@@ -884,6 +891,7 @@ $("ficheroHistorico").addEventListener("change", async (evento) => {
 });
 
 pintarHistorico();
+refrescarMesesContador();
 $("accesoDatadis").addEventListener("submit", entrarEnDatadis);
 $("suministroDatadis").addEventListener("change", pintarContrato);
 $("bajarDatadis").addEventListener("click", bajarDeDatadis);
