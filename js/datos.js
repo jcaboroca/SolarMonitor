@@ -160,6 +160,36 @@ export function construirSerie(filas, roles, unidades, { invertirRed = false, in
   return { registros, unidadesRol, pasoMinutos: Math.round(paso / 60000) };
 }
 
+// Para guardar la serie en el navegador se pasa a columnas: un objeto por
+// registro multiplica por tres el tamano y no cabria el mes entero.
+export function serializarSerie({ registros, unidadesRol, pasoMinutos }) {
+  const campos = [...new Set(registros.flatMap(Object.keys))].filter((c) => c !== "instante" && c !== "horas");
+  return {
+    unidadesRol,
+    pasoMinutos,
+    campos,
+    // Las horas llevan seis decimales porque multiplican a toda la energia.
+    valores: registros.map((p) => [
+      p.instante.getTime(),
+      +p.horas.toFixed(6),
+      ...campos.map((c) => (typeof p[c] === "number" ? +p[c].toFixed(3) : null)),
+    ]),
+  };
+}
+
+export function deserializarSerie(guardado) {
+  if (!Array.isArray(guardado?.valores) || !guardado.valores.length) return null;
+  const { campos, unidadesRol, pasoMinutos } = guardado;
+  const registros = guardado.valores.map((fila) => {
+    const punto = { instante: new Date(fila[0]), horas: fila[1] };
+    campos.forEach((campo, i) => {
+      if (fila[i + 2] !== null) punto[campo] = fila[i + 2];
+    });
+    return punto;
+  });
+  return { registros, unidadesRol, pasoMinutos };
+}
+
 export function energiaKwh(registros, rol, unidad) {
   if (unidad === "kWh") return registros.reduce((suma, p) => suma + (p[rol] || 0), 0);
   return registros.reduce((suma, p) => suma + (p[rol] || 0) * p.horas, 0) / 1000;

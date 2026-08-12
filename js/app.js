@@ -2,10 +2,11 @@ import { leerXlsx } from "./xlsx.js";
 import {
   ROLES, detectarRoles, unidadDeCabecera, construirSerie, energiaKwh,
   repartoPorPeriodo, resumenPorDia, claveDia, periodoTarifa,
+  serializarSerie, deserializarSerie,
 } from "./datos.js";
 import { textoDelPdf, interpretarFactura, revisarFactura, lecturasFrenteAFacturado } from "./factura.js";
 import { areaApilada, barrasApiladas, barrasAgrupadas, mapaCalor, lineaSimple, COLORES } from "./graficas.js";
-import { leerHistorico, guardarMes, borrarMes, importarHistorico, exportarTodo, analizarHistorico, mesDominante, nombreMes, leerCurvas, guardarCurva } from "./historico.js";
+import { leerHistorico, guardarMes, borrarMes, importarHistorico, exportarTodo, analizarHistorico, mesDominante, nombreMes, leerCurvas, guardarCurva, leerSerie, guardarSerie } from "./historico.js";
 import { hayNube, urlNube, claveMaestra, configurarNube, bajarDeNube, subirANube, sincronizarPronto } from "./nube.js";
 import * as datadis from "./datadis.js";
 
@@ -166,13 +167,18 @@ function recalcular() {
     return;
   }
   avisar("");
+  refrescarConSerie();
+  guardarSolo();
+  pintarHistorico();
+}
+
+// Todo lo que se pinta a partir de la serie, venga del fichero o del guardado.
+function refrescarConSerie() {
   estado.festivos = leerFestivos();
-  estado.dias = resumenPorDia(registros, estado.serie.unidadesRol);
+  estado.dias = resumenPorDia(estado.serie.registros, estado.serie.unidadesRol);
   pintarFichas();
   pintarComparacion();
   prepararGraficas();
-  guardarSolo();
-  pintarHistorico();
 }
 
 function totales() {
@@ -374,7 +380,7 @@ function pintarLecturas(f) {
   caja.innerHTML =
     `<h3>Lo que marcó el contador y lo que te facturaron</h3>` +
     `<div class="tabla-envoltorio"><table class="tabla">` +
-    `<thead><tr><th>Periodo</th><th>Contador</th><th>Facturado</th><th>Diferencia</th></tr></thead><tbody>` +
+    `<thead><tr><th>Periodo</th><th class="numero">Contador</th><th class="numero">Facturado</th><th class="numero">Diferencia</th></tr></thead><tbody>` +
     filas
       .map(
         (fila) =>
@@ -488,6 +494,7 @@ function guardarSolo() {
   const mes = componerMes();
   if (mes) {
     guardarMes(mes);
+    guardarSerie(mes.mes, serializarSerie(estado.serie));
     sincronizarPronto((error) => marcarNube(error ? `No se ha podido subir: ${error.message}` : "Sincronizado"));
   }
 }
@@ -800,7 +807,7 @@ async function pintarContrato() {
     caja.innerHTML =
       `<h3>Cómo está dado de alta tu suministro</h3>` +
       `<div class="tabla-envoltorio"><table class="tabla"><thead><tr>` +
-      `<th>Desde</th><th>Hasta</th><th>Comercializadora</th><th>Potencia</th><th>Autoconsumo</th>` +
+      `<th>Desde</th><th>Hasta</th><th>Comercializadora</th><th class="numero">Potencia</th><th>Autoconsumo</th>` +
       `</tr></thead><tbody>` +
       lista
         .map(
@@ -1141,6 +1148,7 @@ $("bajarNube").addEventListener("click", async () => {
   try {
     const r = await bajarDeNube();
     marcarNube("activa");
+    restaurarSerie();
     pintarHistorico();
     refrescarMesesContador();
     avisar(r.vacio ? "En la nube todavía no hay nada guardado." : `Traído de la nube: ${r.nuevos} meses nuevos y ${r.fusionados} completados.`);
@@ -1159,6 +1167,7 @@ if (hayNube()) {
   bajarDeNube()
     .then((r) => {
       if (!r.vacio && (r.nuevos || r.fusionados)) {
+        restaurarSerie();
         pintarHistorico();
         refrescarMesesContador();
       }
@@ -1167,6 +1176,22 @@ if (hayNube()) {
     .catch((error) => marcarNube(`error: ${error.message}`));
 }
 
+// El ultimo mes se recupera del navegador para no tener que rearrastrar el .xlsx.
+let serieEnPantalla = null;
+
+function restaurarSerie() {
+  const guardado = leerSerie();
+  // Un fichero recien cargado manda sobre lo guardado.
+  if (!guardado || guardado.mes === serieEnPantalla || estado.filas.length) return;
+  const serie = deserializarSerie(guardado.serie);
+  if (!serie) return;
+  estado.serie = serie;
+  serieEnPantalla = guardado.mes;
+  refrescarConSerie();
+  $("estadoDatos").textContent = `${nombreMes(guardado.mes)} · guardado en este navegador`;
+}
+
+restaurarSerie();
 pintarHistorico();
 refrescarMesesContador();
 $("accesoDatadis").addEventListener("submit", entrarEnDatadis);

@@ -3,6 +3,7 @@
 
 const CLAVE = "solar-monitor-historico";
 const CLAVE_CURVAS = "solar-monitor-curvas";
+const CLAVE_SERIE = "solar-monitor-serie";
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 
 export const nombreMes = (mes) => {
@@ -36,6 +37,7 @@ export function borrarMes(mes) {
   const curvas = curvasCrudas();
   delete curvas[mes];
   localStorage.setItem(CLAVE_CURVAS, JSON.stringify(curvas));
+  if (leerSerie()?.mes === mes) localStorage.removeItem(CLAVE_SERIE);
   return meses;
 }
 
@@ -75,7 +77,33 @@ export function guardarCurva(mes, curva) {
   }
 }
 
-export const paqueteActual = () => ({ version: 2, exportado: new Date().toISOString(), meses: leerHistorico(), curvas: curvasCrudas() });
+// Del detalle cada pocos minutos solo se guarda UN mes: son ~400 kB y el
+// navegador corta sobre los 5 MB. Cada fichero nuevo releva al anterior.
+export function leerSerie() {
+  try {
+    const guardado = JSON.parse(localStorage.getItem(CLAVE_SERIE) || "null");
+    return guardado?.mes && guardado.serie ? guardado : null;
+  } catch {
+    return null;
+  }
+}
+
+export function guardarSerie(mes, serie) {
+  try {
+    localStorage.setItem(CLAVE_SERIE, JSON.stringify({ mes, serie, guardado: new Date().toISOString() }));
+  } catch {
+    // Perder el detalle no puede tumbar el resto del guardado.
+    localStorage.removeItem(CLAVE_SERIE);
+  }
+}
+
+export const paqueteActual = () => ({
+  version: 3,
+  exportado: new Date().toISOString(),
+  meses: leerHistorico(),
+  curvas: curvasCrudas(),
+  serie: leerSerie(),
+});
 
 export const exportarTodo = () => JSON.stringify(paqueteActual(), null, 2);
 
@@ -127,6 +155,11 @@ export function fusionarPaquete(crudo) {
   }
   escribir([...porMes.values()]);
   if (crudo?.curvas) resumen.curvas = fusionarCurvas(crudo.curvas);
+  // Solo hay sitio para una serie: se queda la del mes mas reciente.
+  if (crudo?.serie?.mes && crudo.serie.mes >= (leerSerie()?.mes ?? "")) {
+    guardarSerie(crudo.serie.mes, crudo.serie.serie);
+    resumen.serie = crudo.serie.mes;
+  }
   return resumen;
 }
 
