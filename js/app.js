@@ -1016,8 +1016,9 @@ function panelEstimado(mes) {
   const meses = leerHistorico();
   const fila = meses.find((m) => m.mes === mes);
   const c = fila?.contador;
-  if (!c?.horas || !c.estimadas) return "";
+  if (!c?.horas) return "";
 
+  const nadaEstimado = !c.estimadas;
   const todoEstimado = c.estimadas === c.horas;
   const porcentaje = (c.estimadas / c.horas) * 100;
   // Se redondea solo la parte estimada y la real se saca de ella: asi las dos suman 100.
@@ -1035,20 +1036,23 @@ function panelEstimado(mes) {
 
   const cifras = [[numero(c.total, 0), "kWh que te facturan"]];
   if (Number.isFinite(fila.medido?.total)) cifras.push([numero(fila.medido.total, 0), "kWh midió tu casa"]);
-  if (referencia) cifras.push([numero(referencia.contador.total, 0), `kWh en ${nombreMes(referencia.mes)}, con lectura real`]);
+  // El mes de contraste solo hace falta para juzgar uno estimado.
+  if (referencia && !nadaEstimado) cifras.push([numero(referencia.contador.total, 0), `kWh en ${nombreMes(referencia.mes)}, con lectura real`]);
+
+  const pie = nadaEstimado
+    ? `del mes lo midió el contador: la distribuidora leyó las ${c.horas} horas, no calculó ninguna.`
+    : todoEstimado
+      ? `del mes está estimado: la distribuidora no midió ninguna de las ${c.horas} horas. Aun así, es lo que se factura.`
+      : `del mes está estimado: ${c.estimadas} de las ${c.horas} horas las calculó la distribuidora en vez de medirlas. Aun así, es lo que se factura.`;
 
   return (
-    `<div class="titular ${todoEstimado ? "mal" : "regular"}">` +
+    `<div class="titular ${nadaEstimado ? "bien" : todoEstimado ? "mal" : "regular"}">` +
     `<p class="titular-etiqueta">${nombreMes(mes)} en tu contador</p>` +
     `<div class="titular-par">` +
     `<div class="estimado"><b>${cifraEstimado}</b><small>estimado</small></div>` +
     `<div class="real"><b>${cifraReal}</b><small>lectura real</small></div>` +
     `</div>` +
-    `<p class="titular-pie">${
-      todoEstimado
-        ? `del mes está estimado: la distribuidora no midió ninguna de las ${c.horas} horas.`
-        : `del mes está estimado: ${c.estimadas} de las ${c.horas} horas las calculó la distribuidora en vez de medirlas.`
-    } Aun así, es lo que se factura.</p>` +
+    `<p class="titular-pie">${pie}</p>` +
     `<div class="titular-cifras">` +
     cifras.map(([valor, pie]) => `<div><b>${valor}</b><small>${pie}</small></div>`).join("") +
     `</div></div>`

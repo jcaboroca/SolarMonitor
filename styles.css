@@ -163,6 +163,7 @@ label { font-size: 13px; color: var(--apagado); display: inline-flex; gap: 6px; 
 }
 .titular.mal { border-color: #4a2020; background: linear-gradient(180deg, #2a1313, #1b1010); }
 .titular.regular { border-color: #5a3a1a; background: linear-gradient(180deg, #2a1f10, #1b160f); }
+.titular.bien { border-color: #1e4536; background: linear-gradient(180deg, #12261e, #101b17); }
 .titular-etiqueta { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--apagado); }
 .titular-par { display: flex; justify-content: center; gap: clamp(24px, 9vw, 64px); margin-top: 10px; }
 .titular-par b {
@@ -172,6 +173,7 @@ label { font-size: 13px; color: var(--apagado); display: inline-flex; gap: 6px; 
 .titular-par small { display: block; margin-top: 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--apagado); }
 .titular.mal .titular-par .estimado b { color: var(--rojo); }
 .titular.regular .titular-par .estimado b { color: var(--acento); }
+.titular.bien .titular-par .estimado b { color: var(--apagado); }
 .titular-par .real b { color: var(--verde); }
 .titular-pie { margin: 10px auto 0; max-width: 46ch; font-size: 14px; color: var(--texto); }
 .titular-cifras {
