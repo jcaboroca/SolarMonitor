@@ -1018,7 +1018,10 @@ function panelEstimado(mes) {
   const c = fila?.contador;
   if (!c?.horas || !c.estimadas) return "";
 
-  const medidas = Math.round(((c.horas - c.estimadas) / c.horas) * 100);
+  const todoEstimado = c.estimadas === c.horas;
+  const porcentaje = (c.estimadas / c.horas) * 100;
+  // Con una sola hora estimada de 720 el redondeo daria 0 %, y el panel se contradiria.
+  const cifra = porcentaje < 1 ? "<1%" : `${Math.round(porcentaje)}%`;
   const enMeses = (clave) => Number(clave.slice(0, 4)) * 12 + Number(clave.slice(5, 7));
   // A igual distancia gana el mes posterior: refleja la instalación tal y como está hoy.
   const referencia = meses
@@ -1033,11 +1036,14 @@ function panelEstimado(mes) {
   if (referencia) cifras.push([numero(referencia.contador.total, 0), `kWh en ${nombreMes(referencia.mes)}, con lectura real`]);
 
   return (
-    `<div class="titular ${medidas === 0 ? "mal" : "regular"}">` +
+    `<div class="titular ${todoEstimado ? "mal" : "regular"}">` +
     `<p class="titular-etiqueta">${nombreMes(mes)} en tu contador</p>` +
-    `<p class="titular-cifra">${medidas}%</p>` +
-    `<p class="titular-pie">de las ${c.horas} horas del mes son una lectura real. ` +
-    `El resto lo ha calculado la distribuidora estimando, y aun así es lo que se factura.</p>` +
+    `<p class="titular-cifra">${cifra}</p>` +
+    `<p class="titular-pie">${
+      todoEstimado
+        ? `del mes está estimado: la distribuidora no midió ninguna de las ${c.horas} horas.`
+        : `del mes está estimado: ${c.estimadas} de las ${c.horas} horas las calculó la distribuidora en vez de medirlas.`
+    } Aun así, es lo que se factura.</p>` +
     `<div class="titular-cifras">` +
     cifras.map(([valor, pie]) => `<div><b>${valor}</b><small>${pie}</small></div>`).join("") +
     `</div></div>`
