@@ -135,6 +135,18 @@ label { font-size: 13px; color: var(--apagado); display: inline-flex; gap: 6px; 
 
 .lista-avisos { margin: 8px 0 0; padding-left: 20px; line-height: 1.7; }
 
+#tablaHistorico tbody tr { cursor: pointer; }
+#tablaHistorico tbody tr:hover, #tablaHistorico tbody tr:focus-visible { background: var(--panel-alto); outline: none; }
+
+#detalleMes {
+  margin-top: 16px; padding: 18px; border-radius: 14px;
+  border: 1px solid var(--borde); background: var(--panel);
+}
+#detalleMes h3 { margin: 0 0 4px; }
+#detalleMes h4 { margin: 18px 0 8px; font-size: 14px; color: var(--apagado); }
+#detalleMes .fichas { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); align-items: start; }
+#detalleMes .ficha { background: var(--panel-alto); }
+
 .dato b { font-weight: 600; }
 .dato .fuentes { display: block; margin-top: 2px; font-size: 11px; font-weight: 400; color: var(--apagado); }
 

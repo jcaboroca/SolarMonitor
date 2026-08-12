@@ -90,6 +90,7 @@ async function cargarFactura(fichero) {
     marca.textContent = `${fichero.name} · datos extraídos`;
     pintarComparacion(true);
     pintarRevision();
+    guardarSolo();
     pintarHistorico();
   } catch (error) {
     marca.className = "estado error";
@@ -169,6 +170,7 @@ function recalcular() {
   pintarFichas();
   pintarComparacion();
   prepararGraficas();
+  guardarSolo();
   pintarHistorico();
 }
 
@@ -257,7 +259,10 @@ function pintarComparacion(refrescarFactura = false) {
       `<td class="numero" data-desvio="${concepto.clave}"></td>`;
     cuerpo.appendChild(fila);
   }
-  cuerpo.querySelectorAll("input").forEach((entrada) => entrada.addEventListener("input", pintarDesvios));
+  cuerpo.querySelectorAll("input").forEach((entrada) => {
+    entrada.addEventListener("input", pintarDesvios);
+    entrada.addEventListener("change", guardarSolo);
+  });
 
   $("textoFactura").textContent = leido?.texto || "";
   $("comparacion").hidden = false;
@@ -436,7 +441,10 @@ function componerMes() {
   if (!mes) return null;
   const t = totales();
   const f = estado.factura;
+  const previo = leerHistorico().find((m) => m.mes === mes);
+  const hayFactura = Boolean(f) || CONCEPTOS.some((c) => valorFactura(c.clave) != null);
   return {
+    ...previo,
     mes,
     dias: estado.dias.length,
     desde: estado.dias[0].fecha.toISOString(),
@@ -445,21 +453,39 @@ function componerMes() {
       ...estado.medido,
       produccion: t.produccion,
       consumo: t.consumo,
+      carga: t.carga,
+      descarga: t.descarga,
     },
-    factura: {
-      P1: valorFactura("P1"),
-      P2: valorFactura("P2"),
-      P3: valorFactura("P3"),
-      total: valorFactura("total"),
-      excedentes: valorFactura("excedentes"),
-      lecturas: f?.lecturas ?? null,
-      precioEnergia: f?.precio?.P1 ?? null,
-      precioExcedentes: f?.precioExcedentes ?? null,
-      importe: f?.total ?? null,
-      referencia: f?.referencia ?? null,
-    },
+    // Guardar el dia a dia permite reabrir el mes sin volver a cargar el fichero.
+    detalle: estado.dias.map((d) => [
+      d.clave,
+      +d.produccion.toFixed(2),
+      +d.consumo.toFixed(2),
+      +d.importada.toFixed(2),
+      +d.exportada.toFixed(2),
+    ]),
+    factura: hayFactura
+      ? {
+          P1: valorFactura("P1"),
+          P2: valorFactura("P2"),
+          P3: valorFactura("P3"),
+          total: valorFactura("total"),
+          excedentes: valorFactura("excedentes"),
+          lecturas: f?.lecturas ?? null,
+          precioEnergia: f?.precio?.P1 ?? null,
+          precioExcedentes: f?.precioExcedentes ?? null,
+          importe: f?.total ?? null,
+          referencia: f?.referencia ?? null,
+        }
+      : (previo?.factura ?? {}),
     guardado: new Date().toISOString(),
   };
+}
+
+// Si hay un mes reconocible se guarda solo: olvidarse del boton no puede costar los datos.
+function guardarSolo() {
+  const mes = componerMes();
+  if (mes) guardarMes(mes);
 }
 
 function pintarHistorico() {
@@ -495,8 +521,23 @@ function pintarHistorico() {
       celda(fila.medido?.excedentes, fila.contador?.vertido, fila.factura?.excedentes) +
       `<td class="numero">${euros(fila.factura?.importe)}</td>` +
       `<td class="numero"><button type="button" class="btn cuadrado" data-borrar="${fila.mes}" aria-label="Borrar ${nombreMes(fila.mes)}">×</button></td>`;
+    tr.dataset.mes = fila.mes;
+    tr.tabIndex = 0;
     cuerpo.appendChild(tr);
   }
+
+  cuerpo.querySelectorAll("[data-mes]").forEach((tr) => {
+    const abrir = () => pintarDetalleMes(tr.dataset.mes);
+    tr.addEventListener("click", (evento) => {
+      if (!evento.target.closest("[data-borrar]")) abrir();
+    });
+    tr.addEventListener("keydown", (evento) => {
+      if (evento.key === "Enter" || evento.key === " ") {
+        evento.preventDefault();
+        abrir();
+      }
+    });
+  });
 
   cuerpo.querySelectorAll("[data-borrar]").forEach((boton) =>
     boton.addEventListener("click", () => {
@@ -507,6 +548,71 @@ function pintarHistorico() {
 
   $("avisosHistorico").innerHTML = avisos.map(([tono, texto]) => `<p class="veredicto ${tono}">${texto}</p>`).join("");
   pintarGraficaHistorico(filas);
+}
+
+// Reabre un mes ya guardado sin volver a cargar el xlsx ni el PDF.
+function pintarDetalleMes(mes) {
+  const fila = leerHistorico().find((m) => m.mes === mes);
+  const caja = $("detalleMes");
+  if (!fila) {
+    caja.hidden = true;
+    return;
+  }
+  caja.hidden = false;
+
+  const c = fila.contador;
+  const sello = c?.horas && c.estimadas === c.horas ? ` <span class="sello">estimado</span>` : "";
+  const ficha = (titulo, valor, unidad, color) =>
+    Number.isFinite(valor)
+      ? `<dl class="ficha" style="--color:${color}"><dt>${titulo}</dt><dd>${numero(valor, 1)}<small>${unidad}</small></dd></dl>`
+      : "";
+
+  const conceptos = [
+    ["Comprado en punta (P1)", fila.medido?.P1, c?.P1, fila.factura?.P1],
+    ["Comprado en llano (P2)", fila.medido?.P2, c?.P2, fila.factura?.P2],
+    ["Comprado en valle (P3)", fila.medido?.P3, c?.P3, fila.factura?.P3],
+    ["Comprado en total", fila.medido?.total, c?.total, fila.factura?.total],
+    ["Vertido a la red", fila.medido?.excedentes, c?.vertido, fila.factura?.excedentes],
+  ];
+  const dato = (valor) => `<td class="numero">${Number.isFinite(valor) ? `${numero(valor)} kWh` : "—"}</td>`;
+
+  const faltan = [];
+  if (!Number.isFinite(fila.medido?.total)) faltan.push("el fichero del datalogger");
+  if (!Number.isFinite(fila.factura?.total)) faltan.push("la factura");
+
+  caja.innerHTML =
+    `<h3>${nombreMes(fila.mes)}${sello}</h3>` +
+    `<p class="ayuda">${fila.dias} días guardados${fila.guardado ? ` · última actualización ${new Date(fila.guardado).toLocaleDateString("es-ES")}` : ""}.` +
+    (faltan.length ? ` Falta cargar ${faltan.join(" y ")} de este mes.` : "") +
+    `</p>` +
+    `<div class="fichas">` +
+    ficha("Producción solar", fila.medido?.produccion, "kWh", COLORES.produccion) +
+    ficha("Consumo de la casa", fila.medido?.consumo, "kWh", COLORES.consumo) +
+    ficha("Comprado (contador)", c?.total, "kWh", COLORES.importada) +
+    ficha("Vertido (contador)", c?.vertido, "kWh", COLORES.exportada) +
+    ficha("Importe", fila.factura?.importe, "€", COLORES.carga) +
+    `</div>` +
+    `<div class="tabla-envoltorio"><table class="tabla">` +
+    `<thead><tr><th>Concepto</th><th class="numero">Tu casa</th><th class="numero">Contador</th><th class="numero">Factura</th></tr></thead><tbody>` +
+    conceptos
+      .map(([etiqueta, propio, contador, factura]) => `<tr><td>${etiqueta}</td>${dato(propio)}${dato(contador)}${dato(factura)}</tr>`)
+      .join("") +
+    `</tbody></table></div>` +
+    (fila.detalle?.length
+      ? `<h4>Día a día, según tu instalación</h4><div class="lienzo medio"><canvas id="detalleDiario"></canvas></div>`
+      : "");
+
+  if (fila.detalle?.length) {
+    barrasAgrupadas($("detalleDiario"), {
+      etiquetas: fila.detalle.map(([clave]) => clave.slice(-2)),
+      series: [
+        { nombre: "Producción", color: COLORES.produccion, valores: fila.detalle.map((d) => d[1]) },
+        { nombre: "Comprado", color: COLORES.importada, valores: fila.detalle.map((d) => d[3]) },
+        { nombre: "Vertido", color: COLORES.exportada, valores: fila.detalle.map((d) => d[4]) },
+      ],
+    });
+  }
+  caja.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 function pintarGraficaHistorico(filas) {
