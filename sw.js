@@ -1,7 +1,7 @@
 // Los ficheros del programa se piden a la red primero para que una versión nueva
 // entre sin trucos; las librerías de vendor van desde memoria porque no cambian.
 
-const CACHE = "solar-monitor-v14";
+const CACHE = "solar-monitor-v15";
 const BASE = [
   "./",
   "./index.html",

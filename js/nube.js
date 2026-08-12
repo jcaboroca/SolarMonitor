@@ -10,7 +10,15 @@ const CLAVE_MAESTRA = "solar-monitor-nube-clave";
 const URL_POR_DEFECTO = "https://solar-monitor-nube.mundialisimo.workers.dev";
 
 const texto = (cadena) => new TextEncoder().encode(cadena);
-const aBase64 = (datos) => btoa(String.fromCharCode(...new Uint8Array(datos)));
+
+// Por trozos: pasar megas de golpe como argumentos sueltos desborda la pila.
+const aBase64 = (datos) => {
+  const bytes = new Uint8Array(datos);
+  let binario = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binario += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binario);
+};
+
 const deBase64 = (cadena) => Uint8Array.from(atob(cadena), (c) => c.charCodeAt(0));
 const aHex = (datos) => [...new Uint8Array(datos)].map((b) => b.toString(16).padStart(2, "0")).join("");
 
