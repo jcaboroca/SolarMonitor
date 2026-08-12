@@ -199,16 +199,9 @@ label { font-size: 13px; color: var(--apagado); display: inline-flex; gap: 6px; 
 
 @media (max-width: 720px) {
   .cargas { grid-template-columns: 1fr; }
-  .privacidad { width: 100%; }
   .lienzo.alto { height: 240px; }
 }
 
-.nube {
-  border: 1px solid var(--borde); border-radius: 12px;
-  background: var(--panel); padding: 12px 14px; margin: 0 0 16px;
-}
-.nube summary { cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 10px; }
-.nube > *:not(summary) { margin-top: 12px; }
 .pastilla {
   font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
   border: 1px solid var(--acento); color: var(--acento);
@@ -223,3 +216,59 @@ label { font-size: 13px; color: var(--apagado); display: inline-flex; gap: 6px; 
 }
 .campos input:focus { outline: none; border-color: var(--acento); }
 @media (max-width: 620px) { .campos { grid-template-columns: 1fr; } }
+
+/* --- Pestañas ----------------------------------------------------------- */
+
+.cabecera { margin-bottom: 0; }
+.pestanas {
+  position: sticky; top: 0; z-index: 10;
+  background: rgba(13, 17, 23, .92); backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--borde); margin-bottom: 20px;
+}
+.lista-pestanas { display: flex; gap: 4px; }
+.lista-pestanas [role="tab"] {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;
+  background: none; border: 0; border-bottom: 2px solid transparent;
+  color: var(--apagado); font: inherit; font-weight: 600;
+  padding: 12px 8px; cursor: pointer; white-space: nowrap;
+}
+.lista-pestanas [role="tab"]:hover { color: var(--texto); }
+.lista-pestanas [role="tab"][aria-selected="true"] { color: var(--acento); border-bottom-color: var(--acento); }
+.panel:focus { outline: none; }
+
+.vacio {
+  margin: 0; padding: 44px 20px; text-align: center;
+  color: var(--apagado); font-size: 14px;
+  border: 1px dashed var(--borde); border-radius: 12px;
+}
+.vacio b { color: var(--texto); }
+
+.plegable summary { cursor: pointer; font-weight: 600; font-size: 16px; }
+.plegable details > *:not(summary) { margin-top: 12px; }
+
+/* En el movil las pestañas se usan con el pulgar: barra abajo, como una app. */
+@media (max-width: 620px) {
+  .pestanas {
+    position: fixed; top: auto; bottom: 0; left: 0; width: 100%; margin: 0;
+    border-bottom: 0; border-top: 1px solid var(--borde);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .lista-pestanas [role="tab"] {
+    flex-direction: column; gap: 2px; font-size: 11px; padding: 8px 4px;
+    border-bottom: 0; border-top: 2px solid transparent;
+  }
+  .lista-pestanas [role="tab"][aria-selected="true"] { border-bottom-color: transparent; border-top-color: var(--acento); }
+  .lista-pestanas .icono { font-size: 18px; }
+  .cabecera { margin-bottom: 16px; }
+  main.contenedor { padding-bottom: 88px; }
+}
+
+.dialogo {
+  width: min(560px, calc(100vw - 32px));
+  background: var(--panel); color: var(--texto);
+  border: 1px solid var(--borde); border-radius: 14px; padding: 20px;
+}
+.dialogo::backdrop { background: rgba(0, 0, 0, .6); }
+.dialogo h2 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dialogo > *:not(:first-child) { margin-top: 12px; }
+.cerrar-dialogo { display: flex; justify-content: flex-end; }

@@ -21,215 +21,271 @@
       <h1>Solar Monitor</h1>
       <p class="sub">Compara lo que midió tu instalación con lo que te facturaron</p>
     </div>
+    <button class="btn cuadrado" type="button" id="abrirAjustes" aria-label="Ajustes" title="Ajustes">⚙</button>
   </div>
 </header>
+
+<nav class="pestanas" aria-label="Secciones">
+  <div class="contenedor lista-pestanas" role="tablist">
+    <button role="tab" type="button" id="pestana-datos" data-panel="datos" aria-controls="panel-datos" aria-selected="true">
+      <span class="icono" aria-hidden="true">📥</span><span class="rotulo">Datos</span>
+    </button>
+    <button role="tab" type="button" id="pestana-cuadra" data-panel="cuadra" aria-controls="panel-cuadra" aria-selected="false" tabindex="-1">
+      <span class="icono" aria-hidden="true">⚖️</span><span class="rotulo">¿Cuadra?</span>
+    </button>
+    <button role="tab" type="button" id="pestana-meses" data-panel="meses" aria-controls="panel-meses" aria-selected="false" tabindex="-1">
+      <span class="icono" aria-hidden="true">📅</span><span class="rotulo">Mes a mes</span>
+    </button>
+    <button role="tab" type="button" id="pestana-dia" data-panel="dia" aria-controls="panel-dia" aria-selected="false" tabindex="-1">
+      <span class="icono" aria-hidden="true">🔍</span><span class="rotulo">Día a día</span>
+    </button>
+  </div>
+</nav>
 
 <main class="contenedor">
 
   <p id="aviso" class="aviso" hidden role="alert"></p>
 
-  <section class="cargas">
-    <label class="soltar" id="soltarDatos">
-      <input type="file" id="ficheroDatos" accept=".xlsx" hidden>
-      <strong>1 · Datos del datalogger</strong>
-      <span>Arrastra aquí el <b>.xlsx</b> exportado de Solarman o pulsa para elegirlo</span>
-      <span class="estado" id="estadoDatos"></span>
-    </label>
-    <label class="soltar" id="soltarFactura">
-      <input type="file" id="ficheroFactura" accept=".pdf" hidden>
-      <strong>2 · Factura de la luz</strong>
-      <span>Arrastra aquí el <b>.pdf</b> del mismo mes (opcional)</span>
-      <span class="estado" id="estadoFactura"></span>
-    </label>
-  </section>
+  <!-- 1 · Datos -->
+  <div class="panel" id="panel-datos" role="tabpanel" aria-labelledby="pestana-datos" tabindex="0">
 
-  <section class="tarjeta" id="datadis">
-    <h2>3 · Datos del contador</h2>
-    <p class="ayuda">
-      Descarga la curva horaria que registra tu contador desde datadis, la plataforma conjunta de las distribuidoras.
-      Tu navegador habla directamente con datadis: la contraseña no se guarda ni se envía a ningún otro sitio.
-    </p>
-    <form id="accesoDatadis" class="opciones" autocomplete="on">
-      <label>DNI/NIF
-        <input type="text" id="nifDatadis" autocomplete="username" required>
+    <section class="cargas">
+      <label class="soltar" id="soltarDatos">
+        <input type="file" id="ficheroDatos" accept=".xlsx" hidden>
+        <strong>1 · Datos del datalogger</strong>
+        <span>Arrastra aquí el <b>.xlsx</b> exportado de Solarman o pulsa para elegirlo</span>
+        <span class="estado" id="estadoDatos"></span>
       </label>
-      <label>Contraseña
-        <input type="password" id="claveDatadis" autocomplete="current-password" required>
+      <label class="soltar" id="soltarFactura">
+        <input type="file" id="ficheroFactura" accept=".pdf" hidden>
+        <strong>2 · Factura de la luz</strong>
+        <span>Arrastra aquí el <b>.pdf</b> del mismo mes (opcional)</span>
+        <span class="estado" id="estadoFactura"></span>
       </label>
-      <button class="btn primario" type="submit">Entrar</button>
-      <span class="estado" id="estadoDatadis"></span>
-    </form>
-    <div id="descargaDatadis" hidden>
-      <div class="opciones">
-        <label>Suministro
-          <select id="suministroDatadis"></select>
+    </section>
+
+    <section class="tarjeta" id="datadis">
+      <h2>3 · Datos del contador</h2>
+      <p class="ayuda">
+        Descarga la curva horaria que registra tu contador desde datadis, la plataforma conjunta de las distribuidoras.
+        Tu navegador habla directamente con datadis: la contraseña no se guarda ni se envía a ningún otro sitio.
+      </p>
+      <form id="accesoDatadis" class="opciones" autocomplete="on">
+        <label>DNI/NIF
+          <input type="text" id="nifDatadis" autocomplete="username" required>
         </label>
-        <label>Desde
-          <input type="month" id="desdeDatadis">
+        <label>Contraseña
+          <input type="password" id="claveDatadis" autocomplete="current-password" required>
         </label>
-        <label>Hasta
-          <input type="month" id="hastaDatadis">
-        </label>
-        <button class="btn primario" type="button" id="bajarDatadis">Descargar</button>
+        <button class="btn primario" type="submit">Entrar</button>
+        <span class="estado" id="estadoDatadis"></span>
+      </form>
+      <div id="descargaDatadis" hidden>
+        <div class="opciones">
+          <label>Suministro
+            <select id="suministroDatadis"></select>
+          </label>
+          <label>Desde
+            <input type="month" id="desdeDatadis">
+          </label>
+          <label>Hasta
+            <input type="month" id="hastaDatadis">
+          </label>
+          <button class="btn primario" type="button" id="bajarDatadis">Descargar</button>
+        </div>
+        <div id="contratoDatadis"></div>
       </div>
-      <div id="contratoDatadis"></div>
-    </div>
-  </section>
+    </section>
 
-  <section class="tarjeta" id="curvaContador" hidden>
-    <div class="titulo-panel">
-      <h2>El contador, hora a hora</h2>
-      <label>Mes
-        <select id="mesContador"></select>
-      </label>
-    </div>
-    <div id="veredictoSolape"></div>
-    <div id="diasImposibles" hidden></div>
-    <h3>Energía que el contador cuenta dos veces</h3>
-    <p class="ayuda">
-      Cada celda es una hora. Cuanto más roja, más energía registró el contador entrando y saliendo a la vez.
-      Un contador que compensa bien deja este mapa casi vacío, salvo al amanecer y al anochecer.
-    </p>
-    <div class="lienzo medio"><canvas id="mapaSolape"></canvas></div>
-    <div id="cotejoDiario" hidden>
-      <h3>Día a día contra tu instalación</h3>
+    <section class="tarjeta plegable" id="mapeo" hidden>
+      <details>
+        <summary>Columnas detectadas</summary>
+        <p class="ayuda">Revisa que cada columna esté bien identificada. Lo que no uses, déjalo en «Ignorar».</p>
+        <div class="tabla-envoltorio">
+          <table class="tabla" id="tablaMapeo">
+            <thead><tr><th>Columna del fichero</th><th>Ejemplo</th><th>Significado</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="opciones">
+          <label class="check"><input type="checkbox" id="invertirRed"> La red está al revés (compra y vertido cambiados)</label>
+          <label class="check"><input type="checkbox" id="invertirBateria"> La batería está al revés (carga y descarga cambiadas)</label>
+          <label>Festivos del mes
+            <input type="text" id="festivos" placeholder="24/06, 15/08" autocomplete="off">
+          </label>
+        </div>
+        <button class="btn primario" type="button" id="recalcular">Recalcular</button>
+      </details>
+    </section>
+
+  </div>
+
+  <!-- 2 · ¿Cuadra? -->
+  <div class="panel" id="panel-cuadra" role="tabpanel" aria-labelledby="pestana-cuadra" tabindex="0" hidden>
+
+    <p class="vacio">Carga el .xlsx del datalogger en <b>Datos</b> y aquí verás si la factura cuadra.</p>
+
+    <section id="resumen" hidden>
+      <div class="fichas" id="fichas"></div>
+    </section>
+
+    <section class="tarjeta" id="comparacion" hidden>
+      <h2>¿Cuadra la factura?</h2>
+      <p class="ayuda">Los valores de la izquierda salen del PDF, si se han podido leer. Corrige a mano lo que haga falta.</p>
+      <div class="tabla-envoltorio">
+        <table class="tabla" id="tablaFactura">
+          <thead><tr><th>Concepto</th><th>Según la factura</th><th>Según el datalogger</th><th>Diferencia</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="veredicto" id="veredicto"></p>
+      <details class="crudo">
+        <summary>Ver el texto extraído del PDF</summary>
+        <pre id="textoFactura"></pre>
+      </details>
+    </section>
+
+    <section class="tarjeta" id="revision" hidden>
+      <h2>Las cuentas de la factura</h2>
+      <p class="ayuda">Aquí no se compara nada con tu instalación: se rehacen las operaciones de la factura con sus propios números. Si algo no cuadra, es un error de facturación.</p>
+      <p class="veredicto" id="veredictoRevision"></p>
+      <div class="tabla-envoltorio">
+        <table class="tabla" id="tablaRevision">
+          <thead><tr><th>Comprobación</th><th>Debería dar</th><th>Pone</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="lecturas"></div>
+      <div id="avisosFactura"></div>
+    </section>
+
+    <section class="tarjeta" id="solapeContador" hidden>
+      <div class="titulo-panel">
+        <h2>El contador, hora a hora</h2>
+        <label>Mes
+          <select id="mesContador"></select>
+        </label>
+      </div>
+      <div id="veredictoSolape"></div>
+      <div id="diasImposibles" hidden></div>
+      <h3>Energía que el contador cuenta dos veces</h3>
+      <p class="ayuda">
+        Cada celda es una hora. Cuanto más roja, más energía registró el contador entrando y saliendo a la vez.
+        Un contador que compensa bien deja este mapa casi vacío, salvo al amanecer y al anochecer.
+      </p>
+      <div class="lienzo medio"><canvas id="mapaSolape"></canvas></div>
+    </section>
+
+  </div>
+
+  <!-- 3 · Mes a mes -->
+  <div class="panel" id="panel-meses" role="tabpanel" aria-labelledby="pestana-meses" tabindex="0" hidden>
+
+    <p class="vacio">Todavía no hay meses guardados. Analiza uno en <b>Datos</b> y pulsa «Guardar este mes».</p>
+
+    <section class="tarjeta" id="historico" hidden>
+      <div class="titulo-panel">
+        <h2>Mes a mes</h2>
+        <div class="acciones">
+          <button class="btn primario" type="button" id="guardarMes">Guardar este mes</button>
+          <button class="btn" type="button" id="exportarHistorico">Descargar copia</button>
+          <label class="btn" for="ficheroHistorico">Restaurar copia</label>
+          <input type="file" id="ficheroHistorico" accept=".json" hidden>
+        </div>
+      </div>
+      <p class="ayuda">Un mes suelto no dice nada; el patrón de varios meses es lo que delata al que se sale.</p>
+      <div id="avisosHistorico"></div>
+      <div class="tabla-envoltorio">
+        <table class="tabla" id="tablaHistorico">
+          <thead><tr>
+            <th>Mes</th><th>Producido<br><small>tu datalogger</small></th>
+            <th>Comprado<br><small>kWh · contador</small></th>
+            <th>Vertido<br><small>kWh · contador</small></th>
+            <th>Importe<br><small>tu factura</small></th><th></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="ayuda">Pulsa cualquier mes para ver su detalle guardado.</p>
+      <div id="detalleMes" hidden></div>
+      <div class="leyenda" id="leyendaHistorico"></div>
+      <div class="lienzo medio"><canvas id="graficaHistorico"></canvas></div>
+    </section>
+
+  </div>
+
+  <!-- 4 · Día a día -->
+  <div class="panel" id="panel-dia" role="tabpanel" aria-labelledby="pestana-dia" tabindex="0" hidden>
+
+    <p class="vacio">Carga el .xlsx del datalogger en <b>Datos</b> y aquí podrás bucear día por día.</p>
+
+    <section id="graficas" hidden>
+      <div class="tarjeta">
+        <div class="titulo-panel">
+          <h2>Un día en detalle</h2>
+          <div class="navegador-dia">
+            <button type="button" class="btn cuadrado" id="diaAnterior" aria-label="Día anterior">‹</button>
+            <select id="selectorDia" aria-label="Día"></select>
+            <button type="button" class="btn cuadrado" id="diaSiguiente" aria-label="Día siguiente">›</button>
+          </div>
+        </div>
+        <div class="leyenda" id="leyendaDia"></div>
+        <p class="ayuda">Las áreas suman de dónde sale la energía que gasta la casa. La línea de puntos es todo lo que producen los paneles: lo que queda por encima del área amarilla se fue a la batería o a la red.</p>
+        <div class="lienzo alto"><canvas id="graficaDia"></canvas></div>
+        <h3 id="tituloBateria">Nivel de la batería</h3>
+        <div class="lienzo bajo"><canvas id="graficaBateria"></canvas></div>
+      </div>
+
+      <div class="tarjeta">
+        <h2>Balance por días</h2>
+        <div class="leyenda" id="leyendaMes"></div>
+        <div class="lienzo medio"><canvas id="graficaMes"></canvas></div>
+      </div>
+
+      <div class="tarjeta">
+        <h2>Cuándo compras a la red</h2>
+        <p class="ayuda">Cada columna es un día y cada fila una hora: cuanto más intenso, más energía comprada.</p>
+        <div class="lienzo medio"><canvas id="graficaCalor"></canvas></div>
+      </div>
+    </section>
+
+    <section class="tarjeta" id="cotejoContador" hidden>
+      <div class="titulo-panel">
+        <h2>Tu instalación contra el contador</h2>
+        <label>Mes
+          <select id="mesContadorDia"></select>
+        </label>
+      </div>
       <div class="leyenda" id="leyendaDiaria"></div>
       <div class="lienzo medio"><canvas id="compraDiaria"></canvas></div>
       <div class="lienzo medio"><canvas id="vertidoDiario"></canvas></div>
-    </div>
-  </section>
+    </section>
 
-  <section class="tarjeta" id="mapeo" hidden>
-    <h2>Columnas detectadas</h2>
-    <p class="ayuda">Revisa que cada columna esté bien identificada. Lo que no uses, déjalo en «Ignorar».</p>
-    <div class="tabla-envoltorio">
-      <table class="tabla" id="tablaMapeo">
-        <thead><tr><th>Columna del fichero</th><th>Ejemplo</th><th>Significado</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-    <div class="opciones">
-      <label class="check"><input type="checkbox" id="invertirRed"> La red está al revés (compra y vertido cambiados)</label>
-      <label class="check"><input type="checkbox" id="invertirBateria"> La batería está al revés (carga y descarga cambiadas)</label>
-      <label>Festivos del mes
-        <input type="text" id="festivos" placeholder="24/06, 15/08" autocomplete="off">
-      </label>
-    </div>
-    <button class="btn primario" type="button" id="recalcular">Recalcular</button>
-  </section>
-
-  <section id="resumen" hidden>
-    <div class="fichas" id="fichas"></div>
-  </section>
-
-  <section class="tarjeta" id="comparacion" hidden>
-    <h2>¿Cuadra la factura?</h2>
-    <p class="ayuda">Los valores de la izquierda salen del PDF, si se han podido leer. Corrige a mano lo que haga falta.</p>
-    <div class="tabla-envoltorio">
-      <table class="tabla" id="tablaFactura">
-        <thead><tr><th>Concepto</th><th>Según la factura</th><th>Según el datalogger</th><th>Diferencia</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-    <p class="veredicto" id="veredicto"></p>
-    <details class="crudo">
-      <summary>Ver el texto extraído del PDF</summary>
-      <pre id="textoFactura"></pre>
-    </details>
-  </section>
-
-  <section class="tarjeta" id="revision" hidden>
-    <h2>Las cuentas de la factura</h2>
-    <p class="ayuda">Aquí no se compara nada con tu instalación: se rehacen las operaciones de la factura con sus propios números. Si algo no cuadra, es un error de facturación.</p>
-    <p class="veredicto" id="veredictoRevision"></p>
-    <div class="tabla-envoltorio">
-      <table class="tabla" id="tablaRevision">
-        <thead><tr><th>Comprobación</th><th>Debería dar</th><th>Pone</th><th></th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-    <div id="lecturas"></div>
-    <div id="avisosFactura"></div>
-  </section>
-
-  <section class="tarjeta" id="historico" hidden>
-    <div class="titulo-panel">
-      <h2>Mes a mes</h2>
-      <div class="acciones">
-        <button class="btn primario" type="button" id="guardarMes">Guardar este mes</button>
-        <button class="btn" type="button" id="exportarHistorico">Descargar copia</button>
-        <label class="btn" for="ficheroHistorico">Restaurar copia</label>
-        <input type="file" id="ficheroHistorico" accept=".json" hidden>
-      </div>
-    </div>
-    <p class="ayuda">Se guarda solo el resumen de cada mes en este navegador. Un mes suelto no dice nada; el patrón de varios meses es lo que delata al que se sale.</p>
-    <details class="nube" id="ajustesNube">
-      <summary>Sincronizar entre dispositivos <span id="estadoNube" class="pastilla">sin configurar</span></summary>
-      <p class="ayuda">Tu navegador cifra el histórico antes de subirlo. En la nube solo queda un texto ilegible: la clave no sale nunca de aquí. Pega la misma clave maestra en cada dispositivo.</p>
-      <div class="campos">
-        <label>Dirección del Worker
-          <input type="url" id="urlNube" placeholder="https://solar-monitor-nube.tu-cuenta.workers.dev" autocomplete="off" spellcheck="false">
-        </label>
-        <label>Clave maestra
-          <input type="text" id="claveNube" placeholder="pega aquí la clave" autocomplete="off" spellcheck="false">
-        </label>
-      </div>
-      <div class="acciones">
-        <button class="btn primario" type="button" id="guardarNube">Guardar ajustes</button>
-        <button class="btn" type="button" id="subirNube">Subir ahora</button>
-        <button class="btn" type="button" id="bajarNube">Traer de la nube</button>
-      </div>
-      <p class="aviso">Si pierdes la clave maestra, lo que haya en la nube no se puede recuperar. Guárdala en tu gestor de contraseñas y conserva también la copia en fichero.</p>
-    </details>
-    <div id="avisosHistorico"></div>
-    <div class="tabla-envoltorio">
-      <table class="tabla" id="tablaHistorico">
-        <thead><tr>
-          <th>Mes</th><th>Producido<br><small>tu datalogger</small></th>
-          <th>Comprado<br><small>kWh · contador</small></th>
-          <th>Vertido<br><small>kWh · contador</small></th>
-          <th>Importe<br><small>tu factura</small></th><th></th>
-        </tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-    <p class="ayuda">Pulsa cualquier mes para ver su detalle guardado.</p>
-    <div id="detalleMes" hidden></div>
-    <div class="leyenda" id="leyendaHistorico"></div>
-    <div class="lienzo medio"><canvas id="graficaHistorico"></canvas></div>
-  </section>
-
-  <section id="graficas" hidden>
-    <div class="tarjeta">
-      <div class="titulo-panel">
-        <h2>Un día en detalle</h2>
-        <div class="navegador-dia">
-          <button type="button" class="btn cuadrado" id="diaAnterior" aria-label="Día anterior">‹</button>
-          <select id="selectorDia" aria-label="Día"></select>
-          <button type="button" class="btn cuadrado" id="diaSiguiente" aria-label="Día siguiente">›</button>
-        </div>
-      </div>
-      <div class="leyenda" id="leyendaDia"></div>
-      <p class="ayuda">Las áreas suman de dónde sale la energía que gasta la casa. La línea de puntos es todo lo que producen los paneles: lo que queda por encima del área amarilla se fue a la batería o a la red.</p>
-      <div class="lienzo alto"><canvas id="graficaDia"></canvas></div>
-      <h3 id="tituloBateria">Nivel de la batería</h3>
-      <div class="lienzo bajo"><canvas id="graficaBateria"></canvas></div>
-    </div>
-
-    <div class="tarjeta">
-      <h2>Balance por días</h2>
-      <div class="leyenda" id="leyendaMes"></div>
-      <div class="lienzo medio"><canvas id="graficaMes"></canvas></div>
-    </div>
-
-    <div class="tarjeta">
-      <h2>Cuándo compras a la red</h2>
-      <p class="ayuda">Cada columna es un día y cada fila una hora: cuanto más intenso, más energía comprada.</p>
-      <div class="lienzo medio"><canvas id="graficaCalor"></canvas></div>
-    </div>
-  </section>
+  </div>
 
 </main>
+
+<dialog id="ajustes" class="dialogo">
+  <form method="dialog" class="cerrar-dialogo">
+    <button class="btn cuadrado" aria-label="Cerrar">✕</button>
+  </form>
+  <h2>Sincronizar entre dispositivos <span id="estadoNube" class="pastilla">sin configurar</span></h2>
+  <p class="ayuda">Tu navegador cifra el histórico antes de subirlo. En la nube solo queda un texto ilegible: la clave no sale nunca de aquí. Pega la misma clave maestra en cada dispositivo.</p>
+  <div class="campos">
+    <label>Dirección del Worker
+      <input type="url" id="urlNube" placeholder="https://solar-monitor-nube.tu-cuenta.workers.dev" autocomplete="off" spellcheck="false">
+    </label>
+    <label>Clave maestra
+      <input type="text" id="claveNube" placeholder="pega aquí la clave" autocomplete="off" spellcheck="false">
+    </label>
+  </div>
+  <div class="acciones">
+    <button class="btn primario" type="button" id="guardarNube">Guardar ajustes</button>
+    <button class="btn" type="button" id="subirNube">Subir ahora</button>
+    <button class="btn" type="button" id="bajarNube">Traer de la nube</button>
+  </div>
+  <p class="aviso">Si pierdes la clave maestra, lo que haya en la nube no se puede recuperar. Guárdala en tu gestor de contraseñas y conserva también la copia en fichero.</p>
+</dialog>
 
 <script type="module" src="js/app.js"></script>
 </body>

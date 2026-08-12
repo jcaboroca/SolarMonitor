@@ -740,10 +740,16 @@ function pintarMes() {
 const contador = { suministros: [], curvas: leerCurvas() };
 
 function refrescarMesesContador() {
+  // Traer de la nube o restaurar una copia mete curvas nuevas en disco: hay que releerlas.
+  contador.curvas = leerCurvas();
   const descargados = [...contador.curvas.keys()].sort();
   const elegido = $("mesContador").value;
-  $("mesContador").innerHTML = descargados.map((m) => `<option value="${m}">${nombreMes(m)}</option>`).join("");
-  $("mesContador").value = descargados.includes(elegido) ? elegido : descargados[descargados.length - 1] ?? "";
+  const opciones = descargados.map((m) => `<option value="${m}">${nombreMes(m)}</option>`).join("");
+  const mes = descargados.includes(elegido) ? elegido : descargados[descargados.length - 1] ?? "";
+  for (const id of ["mesContador", "mesContadorDia"]) {
+    $(id).innerHTML = opciones;
+    $(id).value = mes;
+  }
   pintarCurvaContador();
 }
 
@@ -946,8 +952,11 @@ function diaDelCambio(dias) {
 function pintarCurvaContador() {
   const mes = $("mesContador").value;
   const curva = contador.curvas.get(mes);
-  $("curvaContador").hidden = !curva;
-  if (!curva) return;
+  $("solapeContador").hidden = !curva;
+  if (!curva) {
+    $("cotejoContador").hidden = true;
+    return;
+  }
 
   const { dias, horas, kwh } = analizarSolape(curva);
   const cambio = diaDelCambio(dias);
@@ -982,7 +991,7 @@ function pintarCurvaContador() {
   const mismoMes = propios.length && mesDominante(propios.map((d) => d.fecha)) === mes;
   pintarDiasImposibles(porDia, mismoMes ? propios : []);
 
-  $("cotejoDiario").hidden = !mismoMes;
+  $("cotejoContador").hidden = !mismoMes;
   if (!mismoMes) return;
 
   const etiquetas = propios.map((d) => String(d.fecha.getDate()));
@@ -1163,7 +1172,13 @@ refrescarMesesContador();
 $("accesoDatadis").addEventListener("submit", entrarEnDatadis);
 $("suministroDatadis").addEventListener("change", pintarContrato);
 $("bajarDatadis").addEventListener("click", bajarDeDatadis);
-$("mesContador").addEventListener("change", pintarCurvaContador);
+// Los dos selectores de mes del contador viven en pestanas distintas pero mandan lo mismo.
+for (const id of ["mesContador", "mesContadorDia"]) {
+  $(id).addEventListener("change", (evento) => {
+    $(id === "mesContador" ? "mesContadorDia" : "mesContador").value = evento.target.value;
+    pintarCurvaContador();
+  });
+}
 $("selectorDia").addEventListener("change", pintarDia);
 $("diaAnterior").addEventListener("click", () => moverDia(-1));
 $("diaSiguiente").addEventListener("click", () => moverDia(1));
@@ -1185,6 +1200,72 @@ window.addEventListener("resize", () => {
     pintarMes();
   }, 150);
 });
+
+// --- Pestañas --------------------------------------------------------------
+
+const PESTANAS = ["datos", "cuadra", "meses", "dia"];
+
+// Las gráficas se miden con clientWidth, que dentro de un panel oculto vale 0
+// y las deja del ancho de reserva. Por eso cada panel se repinta al mostrarse.
+function repintarPanel(nombre) {
+  if (nombre === "cuadra") pintarCurvaContador();
+  if (nombre === "meses") pintarHistorico();
+  if (nombre === "dia" && estado.serie) {
+    pintarDia();
+    pintarMes();
+  }
+}
+
+function refrescarVacios() {
+  for (const nombre of PESTANAS) {
+    const panel = $(`panel-${nombre}`);
+    const cartel = panel.querySelector(".vacio");
+    if (!cartel) continue;
+    const hayAlgo = Boolean(panel.querySelector("section:not([hidden])"));
+    if (cartel.hidden !== hayAlgo) cartel.hidden = hayAlgo;
+  }
+}
+
+function abrirPestana(nombre, guardarEnUrl = true) {
+  if (!PESTANAS.includes(nombre)) nombre = "datos";
+  for (const otra of PESTANAS) {
+    const pestana = $(`pestana-${otra}`);
+    const activa = otra === nombre;
+    pestana.setAttribute("aria-selected", String(activa));
+    pestana.tabIndex = activa ? 0 : -1;
+    $(`panel-${otra}`).hidden = !activa;
+  }
+  if (guardarEnUrl) history.replaceState(null, "", `#${nombre}`);
+  repintarPanel(nombre);
+  refrescarVacios();
+}
+
+for (const nombre of PESTANAS) {
+  $(`pestana-${nombre}`).addEventListener("click", () => abrirPestana(nombre));
+}
+
+document.querySelector(".lista-pestanas").addEventListener("keydown", (evento) => {
+  const paso = { ArrowLeft: -1, ArrowRight: 1 }[evento.key];
+  if (!paso) return;
+  evento.preventDefault();
+  const actual = PESTANAS.findIndex((n) => $(`pestana-${n}`).getAttribute("aria-selected") === "true");
+  const destino = PESTANAS[(actual + paso + PESTANAS.length) % PESTANAS.length];
+  abrirPestana(destino);
+  $(`pestana-${destino}`).focus();
+});
+
+window.addEventListener("hashchange", () => abrirPestana(location.hash.slice(1), false));
+
+// Los paneles se van llenando segun llegan los datos: el cartel de vacio se
+// entera solo, mirando cuando alguna seccion deja de estar oculta.
+const vigilante = new MutationObserver(refrescarVacios);
+for (const nombre of PESTANAS) {
+  vigilante.observe($(`panel-${nombre}`), { attributes: true, attributeFilter: ["hidden"], subtree: true });
+}
+
+$("abrirAjustes").addEventListener("click", () => $("ajustes").showModal());
+
+abrirPestana(location.hash.slice(1), false);
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
