@@ -18,8 +18,6 @@ export const urlNube = () => localStorage.getItem(CLAVE_URL) || URL_POR_DEFECTO;
 export const claveMaestra = () => localStorage.getItem(CLAVE_MAESTRA) || "";
 export const hayNube = () => Boolean(urlNube() && claveMaestra());
 
-export const generarClave = () => aBase64(crypto.getRandomValues(new Uint8Array(32))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-
 export function configurarNube(url, maestra) {
   const limpia = url.trim().replace(/\/+$/, "");
   if (limpia) localStorage.setItem(CLAVE_URL, limpia);

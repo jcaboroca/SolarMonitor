@@ -6,7 +6,7 @@ import {
 import { textoDelPdf, interpretarFactura, revisarFactura, lecturasFrenteAFacturado } from "./factura.js";
 import { areaApilada, barrasApiladas, barrasAgrupadas, mapaCalor, lineaSimple, COLORES } from "./graficas.js";
 import { leerHistorico, guardarMes, borrarMes, importarHistorico, exportarTodo, analizarHistorico, mesDominante, nombreMes, leerCurvas, guardarCurva } from "./historico.js";
-import { hayNube, urlNube, claveMaestra, generarClave, configurarNube, bajarDeNube, subirANube, sincronizarPronto } from "./nube.js";
+import { hayNube, urlNube, claveMaestra, configurarNube, bajarDeNube, subirANube, sincronizarPronto } from "./nube.js";
 import * as datadis from "./datadis.js";
 
 const $ = (id) => document.getElementById(id);
@@ -1106,11 +1106,6 @@ function marcarNube(mensaje) {
   sello.textContent = mensaje ?? (hayNube() ? "activa" : "sin configurar");
   sello.classList.toggle("apagada", !hayNube());
 }
-
-$("generarClaveNube").addEventListener("click", () => {
-  $("claveNube").value = generarClave();
-  marcarNube("clave nueva sin guardar");
-});
 
 $("guardarNube").addEventListener("click", () => {
   configurarNube($("urlNube").value, $("claveNube").value);
