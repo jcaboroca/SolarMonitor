@@ -2,12 +2,13 @@ name = "solar-monitor-nube"
 main = "src/index.js"
 compatibility_date = "2025-06-01"
 workers_dev = true
+preview_urls = false
 
 # KV donde vive el historico cifrado. El id se rellena al crear el namespace:
 #   npx wrangler kv namespace create HISTORICO
 [[kv_namespaces]]
 binding = "HISTORICO"
-id = "PENDIENTE"
+id = "60b0b16ccce14c82bda5626468dad476"
 
 # La credencial NO va aqui. Se guarda como secret:
 #   npx wrangler secret put SOLAR_ID

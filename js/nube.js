@@ -6,8 +6,8 @@ import { paqueteActual, fusionarPaquete } from "./historico.js";
 const CLAVE_URL = "solar-monitor-nube-url";
 const CLAVE_MAESTRA = "solar-monitor-nube-clave";
 
-// Se rellena cuando el Worker este desplegado; hasta entonces se pide en los ajustes.
-const URL_POR_DEFECTO = "";
+// Worker propio ya desplegado; los ajustes permiten apuntar a otro sitio si hiciera falta.
+const URL_POR_DEFECTO = "https://solar-monitor-nube.mundialisimo.workers.dev";
 
 const texto = (cadena) => new TextEncoder().encode(cadena);
 const aBase64 = (datos) => btoa(String.fromCharCode(...new Uint8Array(datos)));

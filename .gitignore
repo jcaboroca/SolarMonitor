@@ -7,3 +7,4 @@ muestras/
 worker/.dev.vars
 worker/.wrangler/
 node_modules/
+CLAVE-MAESTRA.txt
