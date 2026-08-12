@@ -79,7 +79,7 @@ export async function bajarDeNube() {
 export async function subirANube() {
   const { id, clave } = await derivar();
   const respuesta = await llamar("PUT", id, await cifrar(clave, paqueteActual()));
-  if (!respuesta.ok) throw new Error(`La nube ha respondido ${respuesta.status}.`);
+  if (!respuesta.ok) throw new Error(`La nube ha respondido ${respuesta.status}: ${await respuesta.text()}`);
   return respuesta.json();
 }
 

@@ -1121,7 +1121,7 @@ $("subirNube").addEventListener("click", async () => {
     marcarNube("activa");
     avisar(`Histórico subido y cifrado (${Math.round(r.bytes / 1024)} kB).`);
   } catch (error) {
-    marcarNube("error");
+    marcarNube(`error: ${error.message}`);
     avisar(`No se ha podido subir: ${error.message}`);
   }
 });
@@ -1136,7 +1136,7 @@ $("bajarNube").addEventListener("click", async () => {
     refrescarMesesContador();
     avisar(r.vacio ? "En la nube todavía no hay nada guardado." : `Traído de la nube: ${r.nuevos} meses nuevos y ${r.fusionados} completados.`);
   } catch (error) {
-    marcarNube("error");
+    marcarNube(`error: ${error.message}`);
     avisar(`No se ha podido traer: ${error.message}`);
   }
 });

@@ -2,7 +2,8 @@
 // Solo guarda y devuelve un churro: la clave de descifrado nunca sale del navegador.
 
 const ORIGEN_WEB = "https://jcaboroca.github.io";
-const LIMITE = 5 * 1024 * 1024;
+// Las curvas de Solarman van a 5 minutos y abultan; KV admite hasta 25 MB.
+const LIMITE = 20 * 1024 * 1024;
 
 // El origen no es la seguridad (esa es la credencial); solo abre el navegador a la web propia.
 const permitido = (origen) => origen === ORIGEN_WEB || /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origen);
@@ -45,7 +46,7 @@ export default {
 
     if (peticion.method === "PUT") {
       const cuerpo = await peticion.text();
-      if (cuerpo.length > LIMITE) return responder("Demasiado grande.", 413);
+      if (cuerpo.length > LIMITE) return responder(`Demasiado grande: ${Math.round(cuerpo.length / 1024)} kB.`, 413);
       await entorno.HISTORICO.put("paquete", cuerpo);
       return responder(JSON.stringify({ guardado: new Date().toISOString(), bytes: cuerpo.length }), 200, "application/json");
     }
