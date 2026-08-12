@@ -1020,8 +1020,10 @@ function panelEstimado(mes) {
 
   const todoEstimado = c.estimadas === c.horas;
   const porcentaje = (c.estimadas / c.horas) * 100;
-  // Con una sola hora estimada de 720 el redondeo daria 0 %, y el panel se contradiria.
-  const cifra = porcentaje < 1 ? "<1%" : `${Math.round(porcentaje)}%`;
+  // Se redondea solo la parte estimada y la real se saca de ella: asi las dos suman 100.
+  const casiNada = porcentaje > 0 && porcentaje < 1;
+  const cifraEstimado = casiNada ? "<1%" : `${Math.round(porcentaje)}%`;
+  const cifraReal = casiNada ? ">99%" : `${100 - Math.round(porcentaje)}%`;
   const enMeses = (clave) => Number(clave.slice(0, 4)) * 12 + Number(clave.slice(5, 7));
   // A igual distancia gana el mes posterior: refleja la instalación tal y como está hoy.
   const referencia = meses
@@ -1038,7 +1040,10 @@ function panelEstimado(mes) {
   return (
     `<div class="titular ${todoEstimado ? "mal" : "regular"}">` +
     `<p class="titular-etiqueta">${nombreMes(mes)} en tu contador</p>` +
-    `<p class="titular-cifra">${cifra}</p>` +
+    `<div class="titular-par">` +
+    `<div class="estimado"><b>${cifraEstimado}</b><small>estimado</small></div>` +
+    `<div class="real"><b>${cifraReal}</b><small>lectura real</small></div>` +
+    `</div>` +
     `<p class="titular-pie">${
       todoEstimado
         ? `del mes está estimado: la distribuidora no midió ninguna de las ${c.horas} horas.`
