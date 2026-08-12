@@ -5,7 +5,8 @@ import {
 } from "./datos.js";
 import { textoDelPdf, interpretarFactura, revisarFactura, lecturasFrenteAFacturado } from "./factura.js";
 import { areaApilada, barrasApiladas, barrasAgrupadas, mapaCalor, lineaSimple, COLORES } from "./graficas.js";
-import { leerHistorico, guardarMes, borrarMes, importarHistorico, analizarHistorico, mesDominante, nombreMes, leerCurvas, guardarCurva } from "./historico.js";
+import { leerHistorico, guardarMes, borrarMes, importarHistorico, exportarTodo, analizarHistorico, mesDominante, nombreMes, leerCurvas, guardarCurva } from "./historico.js";
+import { hayNube, urlNube, claveMaestra, generarClave, configurarNube, bajarDeNube, subirANube, sincronizarPronto } from "./nube.js";
 import * as datadis from "./datadis.js";
 
 const $ = (id) => document.getElementById(id);
@@ -485,7 +486,10 @@ function componerMes() {
 // Si hay un mes reconocible se guarda solo: olvidarse del boton no puede costar los datos.
 function guardarSolo() {
   const mes = componerMes();
-  if (mes) guardarMes(mes);
+  if (mes) {
+    guardarMes(mes);
+    sincronizarPronto((error) => marcarNube(error ? `No se ha podido subir: ${error.message}` : "Sincronizado"));
+  }
 }
 
 function pintarHistorico() {
@@ -1075,10 +1079,10 @@ $("guardarMes").addEventListener("click", () => {
 });
 
 $("exportarHistorico").addEventListener("click", () => {
-  const blob = new Blob([JSON.stringify(leerHistorico(), null, 2)], { type: "application/json" });
+  const blob = new Blob([exportarTodo()], { type: "application/json" });
   const enlace = document.createElement("a");
   enlace.href = URL.createObjectURL(blob);
-  enlace.download = "solar-monitor-historico.json";
+  enlace.download = `solar-monitor-${new Date().toISOString().slice(0, 10)}.json`;
   enlace.click();
   URL.revokeObjectURL(enlace.href);
 });
@@ -1087,14 +1091,77 @@ $("ficheroHistorico").addEventListener("change", async (evento) => {
   const fichero = evento.target.files[0];
   if (!fichero) return;
   try {
-    importarHistorico(await fichero.text());
+    const r = importarHistorico(await fichero.text());
     pintarHistorico();
-    avisar("Copia restaurada.");
+    refrescarMesesContador();
+    avisar(`Copia restaurada: ${r.nuevos} meses nuevos y ${r.fusionados} completados. Lo que ya tenías no se ha perdido.`);
   } catch (error) {
     avisar(`No se ha podido leer la copia: ${error.message}`);
   }
   evento.target.value = "";
 });
+
+function marcarNube(mensaje) {
+  const sello = $("estadoNube");
+  sello.textContent = mensaje ?? (hayNube() ? "activa" : "sin configurar");
+  sello.classList.toggle("apagada", !hayNube());
+}
+
+$("generarClaveNube").addEventListener("click", () => {
+  $("claveNube").value = generarClave();
+  marcarNube("clave nueva sin guardar");
+});
+
+$("guardarNube").addEventListener("click", () => {
+  configurarNube($("urlNube").value, $("claveNube").value);
+  marcarNube();
+  avisar(hayNube() ? "Sincronización configurada. Pega esta misma clave en tus otros dispositivos." : "Sincronización desactivada.");
+});
+
+$("subirNube").addEventListener("click", async () => {
+  if (!hayNube()) return avisar("Antes hay que rellenar la dirección del Worker y la clave maestra.");
+  marcarNube("subiendo…");
+  try {
+    const r = await subirANube();
+    marcarNube("activa");
+    avisar(`Histórico subido y cifrado (${Math.round(r.bytes / 1024)} kB).`);
+  } catch (error) {
+    marcarNube("error");
+    avisar(`No se ha podido subir: ${error.message}`);
+  }
+});
+
+$("bajarNube").addEventListener("click", async () => {
+  if (!hayNube()) return avisar("Antes hay que rellenar la dirección del Worker y la clave maestra.");
+  marcarNube("bajando…");
+  try {
+    const r = await bajarDeNube();
+    marcarNube("activa");
+    pintarHistorico();
+    refrescarMesesContador();
+    avisar(r.vacio ? "En la nube todavía no hay nada guardado." : `Traído de la nube: ${r.nuevos} meses nuevos y ${r.fusionados} completados.`);
+  } catch (error) {
+    marcarNube("error");
+    avisar(`No se ha podido traer: ${error.message}`);
+  }
+});
+
+$("urlNube").value = urlNube();
+$("claveNube").value = claveMaestra();
+marcarNube();
+
+// Al abrir, lo de la nube se funde con lo de este navegador antes de pintar nada.
+if (hayNube()) {
+  bajarDeNube()
+    .then((r) => {
+      if (!r.vacio && (r.nuevos || r.fusionados)) {
+        pintarHistorico();
+        refrescarMesesContador();
+      }
+      marcarNube("activa");
+    })
+    .catch((error) => marcarNube(`error: ${error.message}`));
+}
 
 pintarHistorico();
 refrescarMesesContador();

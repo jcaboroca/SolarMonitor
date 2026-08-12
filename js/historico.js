@@ -75,16 +75,59 @@ export function guardarCurva(mes, curva) {
   }
 }
 
-export function importarHistorico(texto) {
-  const entrantes = JSON.parse(texto);
+export const paqueteActual = () => ({ version: 2, exportado: new Date().toISOString(), meses: leerHistorico(), curvas: curvasCrudas() });
+
+export const exportarTodo = () => JSON.stringify(paqueteActual(), null, 2);
+
+const tieneDatos = (valor) => {
+  if (valor == null) return false;
+  if (Array.isArray(valor)) return valor.length > 0;
+  if (typeof valor === "object") return Object.values(valor).some((v) => v != null);
+  return true;
+};
+
+// Al fusionar, un hueco nunca pisa un dato: si la copia trae el mes sin factura, la que ya habia se queda.
+function fusionarMes(previo, entrante) {
+  if (!previo) return entrante;
+  const fusion = { ...previo };
+  for (const [campo, valor] of Object.entries(entrante)) {
+    if (tieneDatos(valor) || !tieneDatos(previo[campo])) fusion[campo] = valor;
+  }
+  return fusion;
+}
+
+function fusionarCurvas(entrantes) {
+  const curvas = curvasCrudas();
+  let sumadas = 0;
+  for (const [mes, puntos] of Object.entries(entrantes)) {
+    if (!Array.isArray(puntos) || (curvas[mes]?.length ?? 0) >= puntos.length) continue;
+    curvas[mes] = puntos;
+    sumadas++;
+  }
+  try {
+    localStorage.setItem(CLAVE_CURVAS, JSON.stringify(curvas));
+  } catch {
+    throw new Error("Los meses se han restaurado, pero las curvas horarias no caben en este navegador.");
+  }
+  return sumadas;
+}
+
+export const importarHistorico = (texto) => fusionarPaquete(JSON.parse(texto));
+
+export function fusionarPaquete(crudo) {
+  const entrantes = Array.isArray(crudo) ? crudo : crudo?.meses;
   if (!Array.isArray(entrantes)) throw new Error("El fichero no tiene el formato esperado.");
   const porMes = new Map(leerHistorico().map((m) => [m.mes, m]));
+  const resumen = { nuevos: 0, fusionados: 0, curvas: 0 };
   for (const registro of entrantes) {
-    if (registro?.mes) porMes.set(registro.mes, registro);
+    if (!registro?.mes) continue;
+    const previo = porMes.get(registro.mes);
+    previo ? resumen.fusionados++ : resumen.nuevos++;
+    porMes.set(registro.mes, fusionarMes(previo, registro));
   }
-  const meses = [...porMes.values()];
-  escribir(meses);
-  return meses;
+  escribir([...porMes.values()]);
+  if (crudo?.curvas) resumen.curvas = fusionarCurvas(crudo.curvas);
+  return resumen;
 }
 
 // El mes al que pertenece un tramo: aquel en el que caen más días.

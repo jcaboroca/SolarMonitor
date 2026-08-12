@@ -202,3 +202,24 @@ label { font-size: 13px; color: var(--apagado); display: inline-flex; gap: 6px; 
   .privacidad { width: 100%; }
   .lienzo.alto { height: 240px; }
 }
+
+.nube {
+  border: 1px solid var(--borde); border-radius: 12px;
+  background: var(--panel); padding: 12px 14px; margin: 0 0 16px;
+}
+.nube summary { cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+.nube > *:not(summary) { margin-top: 12px; }
+.pastilla {
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  border: 1px solid var(--acento); color: var(--acento);
+  border-radius: 999px; padding: 2px 9px;
+}
+.pastilla.apagada { border-color: var(--borde); color: var(--apagado); }
+.campos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.campos label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--apagado); }
+.campos input {
+  background: #0d1117; color: var(--texto); border: 1px solid var(--borde);
+  border-radius: 8px; padding: 8px 10px; font-size: 13px; font-family: inherit;
+}
+.campos input:focus { outline: none; border-color: var(--acento); }
+@media (max-width: 620px) { .campos { grid-template-columns: 1fr; } }

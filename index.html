@@ -164,6 +164,25 @@
       </div>
     </div>
     <p class="ayuda">Se guarda solo el resumen de cada mes en este navegador. Un mes suelto no dice nada; el patrón de varios meses es lo que delata al que se sale.</p>
+    <details class="nube" id="ajustesNube">
+      <summary>Sincronizar entre dispositivos <span id="estadoNube" class="pastilla">sin configurar</span></summary>
+      <p class="ayuda">Tu navegador cifra el histórico antes de subirlo. En la nube solo queda un texto ilegible: la clave no sale nunca de aquí. Pega la misma clave maestra en cada dispositivo.</p>
+      <div class="campos">
+        <label>Dirección del Worker
+          <input type="url" id="urlNube" placeholder="https://solar-monitor-nube.tu-cuenta.workers.dev" autocomplete="off" spellcheck="false">
+        </label>
+        <label>Clave maestra
+          <input type="text" id="claveNube" placeholder="pega aquí la clave" autocomplete="off" spellcheck="false">
+        </label>
+      </div>
+      <div class="acciones">
+        <button class="btn" type="button" id="generarClaveNube">Generar clave</button>
+        <button class="btn primario" type="button" id="guardarNube">Guardar ajustes</button>
+        <button class="btn" type="button" id="subirNube">Subir ahora</button>
+        <button class="btn" type="button" id="bajarNube">Traer de la nube</button>
+      </div>
+      <p class="aviso">Si pierdes la clave maestra, lo que haya en la nube no se puede recuperar. Guárdala en tu gestor de contraseñas y conserva también la copia en fichero.</p>
+    </details>
     <div id="avisosHistorico"></div>
     <div class="tabla-envoltorio">
       <table class="tabla" id="tablaHistorico">

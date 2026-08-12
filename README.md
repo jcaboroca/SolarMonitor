@@ -36,6 +36,8 @@ del mes» (`24/06, 15/08`) porque no hay ninguna lista fija metida en el código
 - `js/datos.js` — detección de columnas, integración a kWh y periodos tarifarios.
 - `js/factura.js` — texto del PDF (pdf.js) y heurísticas de factura 2.0TD.
 - `js/graficas.js` — gráficas en canvas.
+- `js/nube.js` — cifrado y sincronización con el Worker.
+- `worker/` — Worker de Cloudflare que guarda el histórico cifrado.
 - `vendor/` — pdf.js, servido desde el propio repositorio.
 - `muestras/` — datos reales de prueba, fuera del control de versiones.
 
@@ -44,3 +46,31 @@ del mes» (`24/06, 15/08`) porque no hay ninguna lista fija metida en el código
 ```sh
 python3 -m http.server 8765
 ```
+
+## Sincronizar entre dispositivos
+
+El histórico vive en el navegador, así que cada dispositivo empieza vacío. Para
+compartirlo hay un Worker de Cloudflare que guarda **una copia cifrada**: la clave
+de descifrado se deriva en el navegador y nunca se envía, de modo que en la nube
+solo queda un churro ilegible.
+
+Despliegue, una sola vez:
+
+```sh
+cd worker
+npx wrangler login
+npx wrangler kv namespace create HISTORICO   # copiar el id en wrangler.toml
+node ../scripts/credencial.mjs              # genera clave maestra y SOLAR_ID
+npx wrangler secret put SOLAR_ID            # pegar el SOLAR_ID que imprime
+npx wrangler deploy
+```
+
+Después, en la web: «Mes a mes» → «Sincronizar entre dispositivos», pegar la
+dirección del Worker y la **clave maestra** (la otra línea que imprime el script).
+La misma clave en cada dispositivo.
+
+Al traer de la nube se fusiona campo a campo: un hueco nunca pisa un dato, así que
+sincronizar desde un dispositivo con menos información no borra la que ya había.
+
+> Si se pierde la clave maestra, lo que haya en la nube es irrecuperable. Conviene
+> guardarla en el gestor de contraseñas y conservar además la copia en fichero.
