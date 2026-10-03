@@ -12,9 +12,9 @@ test("la radiacion de Open-Meteo es la media de la hora anterior", () => {
 });
 
 test("la URL redondea la ubicacion a dos decimales", () => {
-  const url = urlPrevision({ lat: 41.312345, lon: 2.00789 });
-  assert.match(url, /latitude=41\.31&/);
-  assert.match(url, /longitude=2\.01&/);
+  const url = urlPrevision({ lat: 40.416775, lon: -3.70379 });
+  assert.match(url, /latitude=40\.42&/);
+  assert.match(url, /longitude=-3\.7&/);
   assert.match(url, /shortwave_radiation/);
 });
 
