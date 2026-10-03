@@ -76,7 +76,7 @@ async function traerVivo() {
 }
 
 const horasDelWorker = (estado) =>
-  [...(estado?.horas || []), ...(estado?.hora ? [estado.hora] : [])].map(([hora, casaWh, solarWh, , , soc, minutos]) => ({
+  (estado?.horas || []).map(([hora, casaWh, solarWh, , , soc, minutos]) => ({
     inicio: new Date(hora * HORA),
     casaKwh: casaWh / 1000,
     solarKwh: solarWh / 1000,
@@ -243,6 +243,7 @@ function pintarDecision() {
     frescura.textContent = "Sin dato en vivo.";
   }
   if (k.estadoWorker?.error) frescura.textContent += ` · ${k.estadoWorker.error}`;
+  if (k.estadoWorker?.avisoVivo) frescura.textContent += ` · ${k.estadoWorker.avisoVivo}`;
   if (k.falloVivo) frescura.textContent += ` · Sin conexión con la nube (${k.falloVivo})`;
 
   // ¿Por que?

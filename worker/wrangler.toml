@@ -15,6 +15,7 @@ id = "60b0b16ccce14c82bda5626468dad476"
 # El id de la planta de Solarman tampoco (el repo es publico):
 #   npx wrangler secret put SOLARMAN_PLANTA
 
-# Lectura en vivo de Solarman: el datalogger sube cada ~5 min.
+# Historico de Solarman: una lectura por hora (el dato en vivo se pide bajo demanda).
+# Minuto 2 para dar tiempo al datalogger a subir la lectura de la hora en punto.
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["2 * * * *"]

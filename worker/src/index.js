@@ -1,6 +1,6 @@
 // Buzon cifrado para el historico de Solar Monitor.
 // Solo guarda y devuelve un churro: la clave de descifrado nunca sale del navegador.
-// Ademas lee la planta de Solarman cada 5 minutos (eso si lo ve el Worker).
+// Ademas lee la planta de Solarman: en vivo cuando la web pregunta y una vez por hora para el historico.
 
 import { sondear, vincular, leerEstado } from "./solarman.js";
 

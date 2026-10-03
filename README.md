@@ -82,9 +82,12 @@ porqué y la mejor ventana para cada electrodoméstico. Simula la casa hora a ho
 con y sin la carga y cobra la diferencia, así que la batería nunca sale gratis.
 Diseño en `docs/superpowers/specs/2026-10-03-asesor-energetico-design.md`.
 
-- **Dato en vivo**: el Worker lee el portal de Solarman cada 5 minutos. El login
-  del portal lleva captcha, así que se vincula una vez pegando el token de
-  renovación en los ajustes del asesor; después el Worker renueva solo.
+- **Dato en vivo**: el Worker lee el portal de Solarman cuando la web pregunta, sin
+  escribir en KV. Una vez por hora (cron) guarda la energía de esa hora restando los
+  acumulados del día: ~25 escrituras de KV al día, para no comerse la cuota
+  gratuita que comparten los Workers de la cuenta. El login del portal lleva
+  captcha, así que se vincula una vez pegando el token de renovación en los
+  ajustes del asesor; después el cron renueva solo.
 - **Previsión solar**: Open-Meteo (sin clave), calibrada con tu producción real.
 - **Hábitos**: medianas por hora con el histórico del xlsx y el que va juntando el Worker.
 
@@ -93,7 +96,7 @@ Despliegue (además de lo de la sincronización):
 ```sh
 cd worker
 npx wrangler secret put SOLARMAN_PLANTA   # id numérico de la planta en Solarman
-npx wrangler deploy                       # incluye el cron */5
+npx wrangler deploy                       # incluye el cron horario
 ```
 
 Pruebas: `node --test 'test/*.test.js'`.

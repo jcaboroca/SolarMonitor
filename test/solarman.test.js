@@ -1,9 +1,12 @@
-import { test } from "node:test";
+import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { acumular, normalizar, sondear, vincular, leerEstado } from "../worker/src/solarman.js";
+import { normalizar, registrarHora, sondear, vincular, leerEstado, olvidarMemoria } from "../worker/src/solarman.js";
 
 const HORA = 3600000;
 const JWT = "eyJhbGciOiJIUzI1NiJ9.eyJhdGkiOiJ4In0.firma";
+const T0 = 1790000000000;
+
+beforeEach(olvidarMemoria);
 
 function kvFalso(inicial = {}) {
   const datos = new Map(Object.entries(inicial).map(([k, v]) => [k, JSON.stringify(v)]));
@@ -23,8 +26,15 @@ function kvFalso(inicial = {}) {
 
 const json = (cuerpo, status = 200) => ({ ok: status < 400, status, json: async () => cuerpo });
 
-function solarmanFalso({ planta = {}, renovacion = 200 } = {}) {
+const planta = (extra = {}) => ({
+  lastUpdateTime: T0 / 1000, acceptDay: "20261003", batterySoc: 55,
+  generationPower: 1500, usePower: 400, buyPower: 0, gridPower: 0, chargePower: -1100, dischargePower: 0,
+  generationValue: 5, useValue: 3, buyValue: 0.5, gridValue: 1, ...extra,
+});
+
+function solarmanFalso({ lecturas = [planta()], renovacion = 200, cierre = null } = {}) {
   const llamadas = [];
+  let i = 0;
   const pedir = async (url, opciones = {}) => {
     llamadas.push({ url, opciones });
     if (url.includes("oauth/token")) {
@@ -32,38 +42,50 @@ function solarmanFalso({ planta = {}, renovacion = 200 } = {}) {
       const n = llamadas.filter((l) => l.url.includes("oauth/token")).length;
       return json({ access_token: `acceso-${n}`, refresh_token: `${JWT}${n}`, expires_in: 86399 });
     }
-    return json({ lastUpdateTime: 1790000000, batterySoc: 55, generationPower: 1500, usePower: 400, buyPower: 0, gridPower: 0, chargePower: -1100, dischargePower: 0, ...planta });
+    if (url.includes("stats/daily")) return json({ statistics: cierre });
+    return json(lecturas[Math.min(i++, lecturas.length - 1)]);
   };
   return { pedir, llamadas };
 }
 
 test("normaliza la respuesta de fast/system", () => {
-  const l = normalizar({ lastUpdateTime: 1790000000, batterySoc: 10, generationPower: 113, usePower: 375, buyPower: 374, gridPower: 0, chargePower: -21, dischargePower: 0 });
-  assert.deepEqual(l, { t: 1790000000000, soc: 10, solarW: 113, casaW: 375, compraW: 374, ventaW: 0, cargaW: 21, descargaW: 0 });
+  const l = normalizar(planta({ batterySoc: 10, generationPower: 113, usePower: 375, buyPower: 374, chargePower: -21 }));
+  assert.equal(l.t, T0);
+  assert.equal(l.dia, "20261003");
+  assert.equal(l.cargaW, 21);
+  assert.deepEqual(l.acumulados, { casa: 3, solar: 5, compra: 0.5, venta: 1 });
 });
 
-test("acumular integra la lectura anterior en su hora y cierra la hora al cambiar", () => {
-  const t0 = 1000 * HORA + 50 * 60000;
-  let e = acumular(null, { t: t0, soc: 50, solarW: 1200, casaW: 600, compraW: 0, ventaW: 0 });
-  e = acumular(e, { t: t0 + 5 * 60000, soc: 51, solarW: 1200, casaW: 600, compraW: 0, ventaW: 0 });
-  assert.deepEqual(e.hora, [1000, 50, 100, 0, 0, 50, 5]);
-  e = acumular(e, { t: t0 + 10 * 60000, soc: 52, solarW: 0, casaW: 300, compraW: 0, ventaW: 0 });
-  e = acumular(e, { t: t0 + 15 * 60000, soc: 52, solarW: 0, casaW: 300, compraW: 0, ventaW: 0 });
-  assert.equal(e.horas.length, 1);
-  assert.equal(e.horas[0][0], 1000);
-  assert.equal(e.hora[0], 1001);
+test("registrarHora resta los acumulados y anota en la hora de la lectura anterior", () => {
+  const a = normalizar(planta());
+  const b = normalizar(planta({ lastUpdateTime: (T0 + HORA) / 1000, useValue: 3.4, generationValue: 6.2, buyValue: 0.5, gridValue: 1.3, batterySoc: 60 }));
+  const e = registrarHora(registrarHora(null, a), b);
+  assert.deepEqual(e.horas, [[Math.floor(T0 / HORA), 400, 1200, 0, 300, 60, 60]]);
 });
 
-test("acumular no inventa energia en un hueco largo", () => {
-  let e = acumular(null, { t: 0, soc: 50, solarW: 0, casaW: 600, compraW: 0, ventaW: 0 });
-  e = acumular(e, { t: 3 * HORA, soc: 50, solarW: 0, casaW: 600, compraW: 0, ventaW: 0 });
-  assert.equal(e.hora[1], 100); // 10 min a 600 W
-  assert.equal(e.hora[6], 10);
+test("al cambiar de dia usa el cierre del dia anterior", () => {
+  const a = normalizar(planta({ useValue: 9 }));
+  const b = normalizar(planta({ lastUpdateTime: (T0 + HORA) / 1000, acceptDay: "20261004", useValue: 0.1, generationValue: 0, buyValue: 0.1, gridValue: 0 }));
+  const cierre = { casa: 9.3, solar: 5, compra: 0.7, venta: 1 };
+  const e = registrarHora(registrarHora(null, a), b, cierre);
+  assert.deepEqual(e.horas[0].slice(1, 5), [400, 0, 300, 0]);
 });
 
-test("acumular ignora una lectura repetida", () => {
-  const e = acumular(null, { t: 5, soc: 1, solarW: 0, casaW: 0, compraW: 0, ventaW: 0 });
-  assert.equal(acumular(e, { ...e.ultimo }), null);
+test("sin cierre del dia anterior no inventa la hora", () => {
+  const a = normalizar(planta());
+  const b = normalizar(planta({ lastUpdateTime: (T0 + HORA) / 1000, acceptDay: "20261004" }));
+  assert.equal(registrarHora(registrarHora(null, a), b).horas.length, 0);
+});
+
+test("un hueco largo no se reparte como si fuera una hora", () => {
+  const a = normalizar(planta());
+  const b = normalizar(planta({ lastUpdateTime: (T0 + 5 * HORA) / 1000, useValue: 8 }));
+  assert.equal(registrarHora(registrarHora(null, a), b).horas.length, 0);
+});
+
+test("registrarHora ignora una lectura repetida", () => {
+  const e = registrarHora(null, normalizar(planta()));
+  assert.equal(registrarHora(e, normalizar(planta())), null);
 });
 
 test("sondear sin vincular no hace nada", async () => {
@@ -75,7 +97,7 @@ test("sondear sin vincular no hace nada", async () => {
 test("sondear renueva, guarda el refresh nuevo y la lectura", async () => {
   const kv = kvFalso({ "solarman-sesion": { refresh: JWT, access: null, caduca: 0 } });
   const { pedir, llamadas } = solarmanFalso();
-  const r = await sondear({ HISTORICO: kv, SOLARMAN_PLANTA: "123" }, { pedir, ahora: 1790000000000 });
+  const r = await sondear({ HISTORICO: kv, SOLARMAN_PLANTA: "123" }, { pedir, ahora: T0 });
   assert.equal(r.resultado, "guardado");
   assert.equal(kv.leer("solarman-sesion").refresh, `${JWT}1`);
   assert.equal(kv.leer("solarman-estado").ultimo.soc, 55);
@@ -83,14 +105,22 @@ test("sondear renueva, guarda el refresh nuevo y la lectura", async () => {
   assert.equal(llamadas[1].opciones.headers.Authorization, "Bearer acceso-1");
 });
 
+test("un dia entero de cron gasta unas 25 escrituras de KV", async () => {
+  const lecturas = Array.from({ length: 24 }, (_, h) => planta({ lastUpdateTime: (T0 + h * HORA) / 1000, useValue: 3 + h * 0.3 }));
+  const kv = kvFalso({ "solarman-sesion": { refresh: JWT, access: null, caduca: 0 } });
+  const { pedir } = solarmanFalso({ lecturas });
+  for (let h = 0; h < 24; h++) await sondear({ HISTORICO: kv, SOLARMAN_PLANTA: "1" }, { pedir, ahora: T0 + h * HORA });
+  assert.ok(kv.escrituras <= 26, `escrituras ${kv.escrituras}`);
+  assert.equal(kv.leer("solarman-estado").horas.length, 23);
+});
+
 test("con sesion vigente no renueva y sin dato nuevo no escribe", async () => {
-  const ahora = 1790000000000;
   const kv = kvFalso({
-    "solarman-sesion": { refresh: JWT, access: "a", caduca: ahora + 10 * HORA },
-    "solarman-estado": { ultimo: { t: 1790000000000 } },
+    "solarman-sesion": { refresh: JWT, access: "a", caduca: T0 + 10 * HORA },
+    "solarman-estado": { ultimo: { t: T0 } },
   });
   const { pedir, llamadas } = solarmanFalso();
-  const r = await sondear({ HISTORICO: kv, SOLARMAN_PLANTA: "1" }, { pedir, ahora });
+  const r = await sondear({ HISTORICO: kv, SOLARMAN_PLANTA: "1" }, { pedir, ahora: T0 });
   assert.equal(r.resultado, "sin novedades");
   assert.equal(llamadas.length, 1);
   assert.equal(kv.escrituras, 0);
@@ -103,7 +133,7 @@ test("si Solarman rechaza la renovacion pide volver a vincular y deja de insisti
   assert.equal(r.resultado, "error");
   assert.equal(kv.leer("solarman-sesion").refresh, null);
   assert.equal(kv.leer("solarman-estado").caducada, true);
-  const estado = await leerEstado({ HISTORICO: kv });
+  const estado = await leerEstado({ HISTORICO: kv, SOLARMAN_PLANTA: "1" }, { pedir: async () => assert.fail("no debe pedir") });
   assert.equal(estado.vinculado, false);
 });
 
@@ -116,6 +146,40 @@ test("un error repetido no gasta escrituras", async () => {
   assert.equal(kv.escrituras, antes);
 });
 
+test("leerEstado trae el dato en vivo sin escribir ni renovar", async () => {
+  const kv = kvFalso({
+    "solarman-sesion": { refresh: JWT, access: "a", caduca: T0 + HORA },
+    "solarman-estado": { ultimo: { t: T0 - HORA, soc: 40 }, horas: [] },
+  });
+  const { pedir, llamadas } = solarmanFalso({ lecturas: [planta({ batterySoc: 77 })] });
+  const e = await leerEstado({ HISTORICO: kv, SOLARMAN_PLANTA: "1" }, { pedir, ahora: T0 });
+  assert.equal(e.ultimo.soc, 77);
+  assert.equal(kv.escrituras, 0);
+  assert.ok(llamadas.every((l) => !l.url.includes("oauth")));
+  // Una segunda pantalla al momento no vuelve a molestar a Solarman.
+  await leerEstado({ HISTORICO: kv, SOLARMAN_PLANTA: "1" }, { pedir, ahora: T0 + 30000 });
+  assert.equal(llamadas.length, 1);
+});
+
+test("leerEstado con la sesion caducada devuelve lo guardado y no renueva", async () => {
+  const kv = kvFalso({
+    "solarman-sesion": { refresh: JWT, access: "a", caduca: T0 - 1 },
+    "solarman-estado": { ultimo: { t: T0 - HORA, soc: 40 } },
+  });
+  const e = await leerEstado({ HISTORICO: kv, SOLARMAN_PLANTA: "1" }, { pedir: async () => assert.fail("no debe pedir"), ahora: T0 });
+  assert.equal(e.ultimo.soc, 40);
+});
+
+test("leerEstado avisa si Solarman falla y devuelve lo guardado", async () => {
+  const kv = kvFalso({
+    "solarman-sesion": { refresh: JWT, access: "a", caduca: T0 + HORA },
+    "solarman-estado": { ultimo: { t: T0 - HORA, soc: 40 } },
+  });
+  const e = await leerEstado({ HISTORICO: kv, SOLARMAN_PLANTA: "1" }, { pedir: async () => json({}, 502), ahora: T0 });
+  assert.equal(e.ultimo.soc, 40);
+  assert.match(e.avisoVivo, /502/);
+});
+
 test("vincular rechaza lo que no parece un token", async () => {
   const kv = kvFalso();
   const r = await vincular({ HISTORICO: kv, SOLARMAN_PLANTA: "1" }, "hola");
@@ -126,6 +190,6 @@ test("vincular rechaza lo que no parece un token", async () => {
 test("vincular guarda el token y prueba en el acto", async () => {
   const kv = kvFalso();
   const { pedir } = solarmanFalso();
-  const r = await vincular({ HISTORICO: kv, SOLARMAN_PLANTA: "1" }, ` ${JWT} `, { pedir, ahora: 1790000000000 });
+  const r = await vincular({ HISTORICO: kv, SOLARMAN_PLANTA: "1" }, ` ${JWT} `, { pedir, ahora: T0 });
   assert.equal(r.resultado, "guardado");
 });
