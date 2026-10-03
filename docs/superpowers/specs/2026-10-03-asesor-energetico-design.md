@@ -14,7 +14,7 @@ completa del programa.
 |---|---|---|
 | Plataforma | Web actual (PWA) primero; app nativa después | Validar el motor con datos reales antes de reescribir nada |
 | Dato en vivo | Portal Solarman vía Worker, con *refresh token* | El login lleva captcha (Turnstile); la renovación no. Verificado |
-| Frecuencia | Cron cada 5 min, solo escribe si el datalogger trae dato nuevo | El datalogger sube cada ~5 min; KV gratis = 1000 escrituras/día |
+| Frecuencia | En vivo bajo demanda (sin escribir en KV); cron horario que resta los acumulados del día | La cuota gratuita (1000 escrituras KV/día) es de toda la cuenta y la comparten otras apps: ~25/día |
 | Tiempo | Open-Meteo (sin clave) | WeatherKit REST exige cuenta de desarrollador y JWT; Open-Meteo da radiación horaria y archivo para calibrar |
 | Precios | Tarifa configurable por periodo + impuestos; PVPC solo como abstracción | La tarifa actual es de precio plano: la señal útil es sol + batería |
 | Motor | Simulación horaria determinista + coste marginal | Explicable, testeable, sin ML |
@@ -37,7 +37,7 @@ completa del programa.
 ## Arquitectura
 
 ```
-Solarman ──(Worker, cron 5 min)──► KV: último dato + agregados horarios
+Solarman ──(Worker: en vivo bajo demanda + cron horario)──► KV: agregados horarios
                                          │
 Open-Meteo ──(navegador)──► previsión de radiación ──► previsión solar calibrada
 Histórico (xlsx + Worker) ──► hábitos (medianas por hora y tipo de día)
@@ -71,7 +71,9 @@ Módulos puros (sin DOM, probados con `node --test`), en `js/asesor/`:
 - `aparatos.js` — `ApplianceProfile` con valores **estimados y editables**.
 
 Worker (`worker/src/`): `/solarman/vincular` (PUT, guarda el refresh token),
-`/solarman/estado` (GET), `scheduled()` cada 5 min. Misma credencial que la
+`/solarman/estado` (GET, lee Solarman al momento sin escribir ni renovar),
+`scheduled()` cada hora (renueva la sesión y guarda la hora). Solo el cron
+renueva: el refresh token rota y dos renovadores se pisarían. Misma credencial que la
 sincronización (`SOLAR_ID`). El id de la planta va en un secret
 (`SOLARMAN_PLANTA`), no en el repositorio (es público).
 
