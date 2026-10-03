@@ -12,3 +12,9 @@ id = "60b0b16ccce14c82bda5626468dad476"
 
 # La credencial NO va aqui. Se guarda como secret:
 #   npx wrangler secret put SOLAR_ID
+# El id de la planta de Solarman tampoco (el repo es publico):
+#   npx wrangler secret put SOLARMAN_PLANTA
+
+# Lectura en vivo de Solarman: el datalogger sube cada ~5 min.
+[triggers]
+crons = ["*/5 * * * *"]

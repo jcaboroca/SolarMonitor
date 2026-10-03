@@ -1,5 +1,8 @@
 // Buzon cifrado para el historico de Solar Monitor.
 // Solo guarda y devuelve un churro: la clave de descifrado nunca sale del navegador.
+// Ademas lee la planta de Solarman cada 5 minutos (eso si lo ve el Worker).
+
+import { sondear, vincular, leerEstado } from "./solarman.js";
 
 const ORIGEN_WEB = "https://jcaboroca.github.io";
 // Las curvas de Solarman van a 5 minutos y abultan; KV admite hasta 25 MB.
@@ -34,10 +37,22 @@ export default {
     if (peticion.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
 
     const url = new URL(peticion.url);
-    if (url.pathname !== "/historico") return responder("No hay nada aqui.", 404);
+    const rutas = ["/historico", "/solarman/estado", "/solarman/vincular"];
+    if (!rutas.includes(url.pathname)) return responder("No hay nada aqui.", 404);
 
     const credencial = (peticion.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
     if (!coincide(credencial, entorno.SOLAR_ID)) return responder("Clave incorrecta.", 401);
+
+    if (url.pathname === "/solarman/estado" && peticion.method === "GET") {
+      return responder(JSON.stringify(await leerEstado(entorno)), 200, "application/json");
+    }
+
+    if (url.pathname === "/solarman/vincular" && peticion.method === "PUT") {
+      const resultado = await vincular(entorno, await peticion.text());
+      return responder(JSON.stringify(resultado), resultado.resultado === "error" ? 400 : 200, "application/json");
+    }
+
+    if (url.pathname !== "/historico") return responder("Metodo no permitido.", 405);
 
     if (peticion.method === "GET") {
       const guardado = await entorno.HISTORICO.get("paquete");
@@ -52,5 +67,9 @@ export default {
     }
 
     return responder("Metodo no permitido.", 405);
+  },
+
+  async scheduled(_evento, entorno, contexto) {
+    contexto.waitUntil(sondear(entorno));
   },
 };
