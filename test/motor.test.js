@@ -90,6 +90,14 @@ test("superar la potencia contratada pone rojo", () => {
   assert.equal(r.estado, "rojo");
 });
 
+test("si la bateria no se va a llenar explica que da igual cuando", () => {
+  const ahora = lunes(19);
+  const slots = horizonte(ahora, { solar: (h) => (h >= 11 && h < 15 ? 0.5 : 0) });
+  const r = decidir({ ahora, slots, bateria, socPct: 10, carga: CARGA_REFERENCIA });
+  assert.equal(r.estado, "amarillo");
+  assert.ok(r.razones.some((x) => /Da igual cuándo/.test(x.texto)), JSON.stringify(r.razones));
+});
+
 test("es determinista", () => {
   const ahora = lunes(19);
   const slots = horizonte(ahora, { solar: soleado });

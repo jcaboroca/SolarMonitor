@@ -91,7 +91,7 @@ function evaluador(slots, bateria, socPct) {
   const valorar = (r) => r.coste - r.energiaUtilFinalKwh * valorFinal;
   const base = simular(slots, bateria, socPct);
   const valorBase = valorar(base);
-  return (inicio, carga) => {
+  const evaluar = (inicio, carga) => {
     const extra = repartir(slots, inicio, carga.duracionH, carga.energiaKwh);
     const con = simular(slots.map((s, i) => ({ ...s, extraKwh: extra[i] })), bateria, socPct);
     const enVentana = extra.map((e) => e > 0);
@@ -105,6 +105,8 @@ function evaluador(slots, bateria, socPct) {
       solarEnVentanaKwh: slots.reduce((t, s, i) => t + (enVentana[i] ? s.solarKwh : 0), 0),
     };
   };
+  evaluar.seLlena = base.pasos.some((p) => p.socPct >= 98);
+  return evaluar;
 }
 
 function clasificar(rel, ahorroRel, excede, u) {
@@ -189,6 +191,14 @@ export function decidir({
   if (!vivo) confianza = peor([confianza, "media"]);
 
   const razones = explicar({ ahora, slots, bateria, socPct, carga, vivo, yaMismo, mejor, ahorro, excedePotencia, potenciaContratadaKw, picoKw });
+  if (mejor === yaMismo && rel >= umbrales.verde) {
+    razones.push({
+      icono: "🧭",
+      texto: evaluar.seLlena
+        ? "No hay una hora claramente mejor en las próximas 24 h."
+        : "Con el sol previsto la batería no llegará a llenarse: gastes ahora o más tarde, ese consumo acabará saliéndote de la red. Da igual cuándo.",
+    });
+  }
 
   return { estado, titulo, carga, ahora: yaMismo, mejor, alternativas, ahorro, referencia, rel, excedePotencia, confianza, razones, candidatos };
 }

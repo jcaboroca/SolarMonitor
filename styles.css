@@ -280,3 +280,71 @@ label { font-size: 13px; color: var(--apagado); display: inline-flex; gap: 6px; 
 .dialogo h2 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .dialogo > *:not(:first-child) { margin-top: 12px; }
 .cerrar-dialogo { display: flex; justify-content: flex-end; }
+
+/* --- Ahora: semaforo ------------------------------------------------------ */
+
+.semaforo {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  padding: 18px 0 8px; margin-bottom: 12px;
+}
+.luz {
+  --color: var(--borde);
+  width: 112px; height: 112px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--color) 35%, transparent), transparent 70%);
+  border: 3px solid var(--color);
+  box-shadow: 0 0 40px color-mix(in srgb, var(--color) 30%, transparent);
+  font-size: 44px; color: var(--color);
+  transition: border-color .4s ease, box-shadow .4s ease, color .4s ease;
+}
+.luz[data-estado="verde"] { --color: var(--verde); }
+.luz[data-estado="amarillo"] { --color: var(--acento); }
+.luz[data-estado="rojo"] { --color: var(--rojo); }
+.semaforo h2 { margin: 14px 0 6px; font-size: 26px; letter-spacing: -.02em; text-transform: uppercase; }
+.cifras { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; margin: 4px 0; font-size: 17px; font-variant-numeric: tabular-nums; }
+.cifras .estimado, .frescura { color: var(--apagado); }
+.coste { margin: 6px 0 0; font-size: 15px; }
+.proxima { margin: 4px 0 0; color: var(--acento); font-weight: 600; }
+.frescura { margin: 8px 0 0; font-size: 12px; }
+
+.aparatos { display: flex; gap: 8px; overflow-x: auto; padding: 4px 0 14px; scrollbar-width: none; }
+.chip {
+  flex: none; display: inline-flex; gap: 6px; align-items: center;
+  background: var(--panel); color: var(--texto); border: 1px solid var(--borde);
+  border-radius: 999px; padding: 7px 13px; font: inherit; font-size: 14px; cursor: pointer;
+}
+.chip[aria-checked="true"] { border-color: var(--acento); background: #2a2410; color: var(--acento); }
+.chip:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+
+.porque summary { cursor: pointer; font-weight: 600; }
+.razones { list-style: none; margin: 12px 0 8px; padding: 0; display: grid; gap: 8px; }
+.razones li { display: flex; gap: 10px; align-items: baseline; }
+.razones .icono { flex: none; width: 1.4em; text-align: center; }
+
+.ventanas { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.ventanas li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 10px; border-radius: 8px; background: var(--panel-alto); }
+.ventanas li.destacada { border: 1px solid var(--verde); font-weight: 600; }
+.ventanas .numero { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.linea { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; margin-top: 8px; }
+.linea .hora {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 6px 0; border-radius: 6px; background: var(--panel-alto); font-size: 11px; color: var(--apagado);
+}
+.linea .marca { font-size: 14px; }
+.linea .verde .marca { color: var(--verde); }
+.linea .amarillo .marca { color: var(--acento); }
+.linea .rojo .marca { color: var(--rojo); }
+.leyenda { margin-top: 8px; }
+.aviso-reserva { margin: 8px 0 0; color: var(--acento); font-weight: 600; }
+
+.campos > .ayuda, .campos > .ancho { grid-column: 1 / -1; margin: 0; }
+#tablaAparatos input { width: 80px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .luz { transition: none; }
+}
+@media (prefers-contrast: more) {
+  .luz { box-shadow: none; background: none; border-width: 4px; }
+  .chip[aria-checked="true"] { background: none; border-width: 2px; }
+}

@@ -74,3 +74,26 @@ sincronizar desde un dispositivo con menos información no borra la que ya habí
 
 > Si se pierde la clave maestra, lo que haya en la nube es irrecuperable. Conviene
 > guardarla en el gestor de contraseñas y conservar además la copia en fichero.
+
+## Asesor: ¿consumo ahora?
+
+La pestaña **Ahora** responde con un semáforo (● bien · ▲ cuidado · ■ evita), el
+porqué y la mejor ventana para cada electrodoméstico. Simula la casa hora a hora
+con y sin la carga y cobra la diferencia, así que la batería nunca sale gratis.
+Diseño en `docs/superpowers/specs/2026-10-03-asesor-energetico-design.md`.
+
+- **Dato en vivo**: el Worker lee el portal de Solarman cada 5 minutos. El login
+  del portal lleva captcha, así que se vincula una vez pegando el token de
+  renovación en los ajustes del asesor; después el Worker renueva solo.
+- **Previsión solar**: Open-Meteo (sin clave), calibrada con tu producción real.
+- **Hábitos**: medianas por hora con el histórico del xlsx y el que va juntando el Worker.
+
+Despliegue (además de lo de la sincronización):
+
+```sh
+cd worker
+npx wrangler secret put SOLARMAN_PLANTA   # id numérico de la planta en Solarman
+npx wrangler deploy                       # incluye el cron */5
+```
+
+Pruebas: `node --test 'test/*.test.js'`.

@@ -91,6 +91,18 @@ export async function subirANube() {
   return respuesta.json();
 }
 
+// Para las rutas del Worker que no van cifradas (la lectura en vivo de Solarman).
+export async function pedirNube(ruta, { method = "GET", body } = {}) {
+  const { id } = await derivar();
+  const respuesta = await fetch(`${urlNube()}${ruta}`, {
+    method,
+    headers: { Authorization: `Bearer ${id}`, "Content-Type": "text/plain" },
+    body,
+  });
+  if (respuesta.status === 401) throw new Error("La clave maestra no coincide con la del Worker.");
+  return respuesta;
+}
+
 // Al guardar se sube, pero sin atosigar: se espera a que pare de haber cambios.
 let pendiente = null;
 export function sincronizarPronto(alTerminar) {

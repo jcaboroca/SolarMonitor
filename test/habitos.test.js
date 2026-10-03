@@ -66,3 +66,12 @@ test("descarta horas con poca cobertura", () => {
   const habitos = crearHabitos(horas, { ahora: new Date(2026, 8, 11) });
   assert.equal(habitos.dias, 0);
 });
+
+test("sin datos recientes usa el historico antiguo con confianza baja y sin sol tipico", () => {
+  const habitos = crearHabitos(horasSinteticas(28), { ahora: new Date(2026, 11, 20) });
+  assert.equal(habitos.historicoAntiguo, true);
+  assert.equal(habitos.aprendiendo, true);
+  assert.equal(habitos.confianza, "baja");
+  assert.equal(habitos.consumo(new Date(2026, 11, 21, 12)).kwh, 0.3);
+  assert.equal(habitos.solarTipica(12), null);
+});

@@ -9,6 +9,7 @@ import { areaApilada, barrasApiladas, barrasAgrupadas, mapaCalor, lineaSimple, C
 import { leerHistorico, guardarMes, borrarMes, importarHistorico, exportarTodo, analizarHistorico, mesDominante, nombreMes, leerCurvas, guardarCurva, leerSerie, guardarSerie } from "./historico.js";
 import { hayNube, urlNube, claveMaestra, configurarNube, bajarDeNube, subirANube, sincronizarPronto } from "./nube.js";
 import * as datadis from "./datadis.js";
+import { iniciarAhora, pintarAhora } from "./ahora.js";
 
 const $ = (id) => document.getElementById(id);
 const estado = { cabeceras: [], filas: [], roles: [], unidades: [], serie: null, dias: [], factura: null };
@@ -1243,11 +1244,12 @@ window.addEventListener("resize", () => {
 
 // --- Pestañas --------------------------------------------------------------
 
-const PESTANAS = ["datos", "cuadra", "meses", "dia"];
+const PESTANAS = ["ahora", "datos", "cuadra", "meses", "dia"];
 
 // Las gráficas se miden con clientWidth, que dentro de un panel oculto vale 0
 // y las deja del ancho de reserva. Por eso cada panel se repinta al mostrarse.
 function repintarPanel(nombre) {
+  if (nombre === "ahora") pintarAhora();
   if (nombre === "cuadra") pintarCurvaContador();
   if (nombre === "meses") pintarHistorico();
   if (nombre === "dia" && estado.serie) {
@@ -1267,7 +1269,7 @@ function refrescarVacios() {
 }
 
 function abrirPestana(nombre, guardarEnUrl = true) {
-  if (!PESTANAS.includes(nombre)) nombre = "datos";
+  if (!PESTANAS.includes(nombre)) nombre = "ahora";
   for (const otra of PESTANAS) {
     const pestana = $(`pestana-${otra}`);
     const activa = otra === nombre;
@@ -1305,6 +1307,7 @@ for (const nombre of PESTANAS) {
 
 $("abrirAjustes").addEventListener("click", () => $("ajustes").showModal());
 
+iniciarAhora({ visible: () => !$("panel-ahora").hidden });
 abrirPestana(location.hash.slice(1), false);
 
 if ("serviceWorker" in navigator) {

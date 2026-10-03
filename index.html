@@ -19,7 +19,7 @@
   <div class="contenedor cabecera-fila">
     <div class="crece">
       <h1>Solar Monitor</h1>
-      <p class="sub">Compara lo que midió tu instalación con lo que te facturaron</p>
+      <p class="sub">Cuándo gastar tu energía y si la factura cuadra con lo que mides</p>
     </div>
     <button class="btn cuadrado" type="button" id="abrirAjustes" aria-label="Ajustes" title="Ajustes">⚙</button>
   </div>
@@ -27,7 +27,10 @@
 
 <nav class="pestanas" aria-label="Secciones">
   <div class="contenedor lista-pestanas" role="tablist">
-    <button role="tab" type="button" id="pestana-datos" data-panel="datos" aria-controls="panel-datos" aria-selected="true">
+    <button role="tab" type="button" id="pestana-ahora" data-panel="ahora" aria-controls="panel-ahora" aria-selected="true">
+      <span class="icono" aria-hidden="true">🚦</span><span class="rotulo">Ahora</span>
+    </button>
+    <button role="tab" type="button" id="pestana-datos" data-panel="datos" aria-controls="panel-datos" aria-selected="false" tabindex="-1">
       <span class="icono" aria-hidden="true">📥</span><span class="rotulo">Datos</span>
     </button>
     <button role="tab" type="button" id="pestana-cuadra" data-panel="cuadra" aria-controls="panel-cuadra" aria-selected="false" tabindex="-1">
@@ -46,8 +49,90 @@
 
   <p id="aviso" class="aviso" hidden role="alert"></p>
 
+  <!-- 0 · Ahora -->
+  <div class="panel" id="panel-ahora" role="tabpanel" aria-labelledby="pestana-ahora" tabindex="0">
+
+    <section class="semaforo" id="semaforo" role="status" aria-live="polite">
+      <div class="luz" id="luzSemaforo" data-estado=""><span id="formaSemaforo" aria-hidden="true">…</span></div>
+      <h2 id="tituloSemaforo">Calculando…</h2>
+      <p class="cifras" id="cifrasVivo"></p>
+      <p class="coste" id="costeAhora"></p>
+      <p class="proxima" id="proximaVentana" hidden></p>
+      <p class="frescura" id="frescura"></p>
+    </section>
+
+    <div class="aparatos" id="aparatos" role="radiogroup" aria-label="¿Qué quieres hacer?"></div>
+
+    <details class="tarjeta porque">
+      <summary>¿Por qué?</summary>
+      <ul class="razones" id="razones"></ul>
+      <p class="ayuda" id="confianza"></p>
+    </details>
+
+    <section class="tarjeta" id="ventanas">
+      <h2 id="tituloVentanas">Mejor momento</h2>
+      <ol class="ventanas" id="listaVentanas"></ol>
+    </section>
+
+    <section class="tarjeta" id="reserva" hidden>
+      <h2>Reserva recomendada esta noche: <span id="pctReserva"></span></h2>
+      <p class="ayuda" id="textoReserva"></p>
+      <p class="aviso-reserva" id="avisoReserva" hidden>🔋 Guarda batería: evita consumos grandes hasta que vuelva el sol.</p>
+    </section>
+
+    <section class="tarjeta">
+      <h2>Próximas 24 horas</h2>
+      <div class="linea" id="linea" role="list"></div>
+      <p class="ayuda leyenda">● buen momento · ▲ cuidado · ■ evita</p>
+    </section>
+
+    <section class="tarjeta" id="aprendiendo" hidden>
+      <h2>Aprendiendo</h2>
+      <p class="ayuda">Estoy aprendiendo tu producción solar, tu consumo y tu batería. Mientras tanto, las previsiones valen menos.</p>
+      <p class="ayuda" id="textoAprendiendo"></p>
+    </section>
+
+    <section class="tarjeta plegable">
+      <details>
+        <summary>Ajustes del asesor</summary>
+        <form id="formAsesor" class="campos">
+          <label>Latitud <input type="text" inputmode="decimal" id="ajLat" placeholder="41.31"></label>
+          <label>Longitud <input type="text" inputmode="decimal" id="ajLon" placeholder="2.00"></label>
+          <p class="ayuda">Solo se usa para pedir la previsión a Open-Meteo, redondeada a dos decimales (≈ 1 km).
+            <button class="btn" type="button" id="usarUbicacion">Usar mi ubicación</button> <span id="estadoUbicacion"></span></p>
+          <label>Potencia pico de las placas (kWp, opcional) <input type="number" step="0.1" min="0" id="ajKwp"></label>
+          <label>Potencia contratada (kW) <input type="number" step="0.1" min="0" id="ajPotencia"></label>
+          <label>Batería útil (kWh) <input type="number" step="0.1" min="0" id="ajCapacidad"></label>
+          <label>Reserva mínima del inversor (%) <input type="number" step="1" min="0" max="100" id="ajSocMinimo"></label>
+          <label>Rendimiento de ida y vuelta (%, estimado) <input type="number" step="1" min="50" max="100" id="ajRendimiento"></label>
+          <label>Energía punta P1 (€/kWh) <input type="number" step="0.0001" min="0" id="ajP1"></label>
+          <label>Energía llano P2 (€/kWh) <input type="number" step="0.0001" min="0" id="ajP2"></label>
+          <label>Energía valle P3 (€/kWh) <input type="number" step="0.0001" min="0" id="ajP3"></label>
+          <label>Excedentes (€/kWh) <input type="number" step="0.0001" min="0" id="ajExcedentes"></label>
+          <p class="ayuda">Precios sin impuestos; el asesor suma el impuesto eléctrico y el IVA.</p>
+          <div class="tabla-envoltorio ancho">
+            <table class="tabla" id="tablaAparatos">
+              <thead><tr><th>Aparato</th><th class="numero">kWh por uso</th><th class="numero">Duración (h)</th><th class="numero">Pico (W)</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </form>
+        <h3>Dato en vivo de Solarman</h3>
+        <p class="ayuda">
+          Entra en el portal de Solarman, abre las herramientas de desarrollador → Almacenamiento → Cookies y copia el valor
+          que empieza por <b>eyJ</b> y caduca dentro de unos seis meses. Va solo a tu Worker, que renueva la sesión por su cuenta.
+        </p>
+        <div class="opciones">
+          <label>Token <input type="password" id="tokenSolarman" autocomplete="off" spellcheck="false"></label>
+          <button class="btn primario" type="button" id="vincularSolarman">Vincular</button>
+          <span class="estado" id="estadoVincular"></span>
+        </div>
+      </details>
+    </section>
+  </div>
+
   <!-- 1 · Datos -->
-  <div class="panel" id="panel-datos" role="tabpanel" aria-labelledby="pestana-datos" tabindex="0">
+  <div class="panel" id="panel-datos" role="tabpanel" aria-labelledby="pestana-datos" tabindex="0" hidden>
 
     <section class="cargas">
       <label class="soltar" id="soltarDatos">

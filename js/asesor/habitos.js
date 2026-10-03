@@ -17,16 +17,17 @@ const inicioDeHora = (instante) => {
   return hora;
 };
 
-/** Registros de potencia (W) de datos.js → energia por hora en kWh. */
-export function aHoras(registros) {
+/** Registros de datos.js (W por defecto, o kWh por intervalo) → energia por hora en kWh. */
+export function aHoras(registros, unidades = {}) {
+  const energia = (p, rol) => (unidades[rol] === "kWh" ? p[rol] || 0 : ((p[rol] || 0) * p.horas) / 1000);
   const horas = new Map();
   for (const p of registros) {
     const inicio = inicioDeHora(p.instante);
     const clave = inicio.getTime();
     if (!horas.has(clave)) horas.set(clave, { inicio, casaKwh: 0, solarKwh: 0, socFin: null, cobertura: 0 });
     const h = horas.get(clave);
-    h.casaKwh += ((p.consumo || 0) * p.horas) / 1000;
-    h.solarKwh += ((p.produccion || 0) * p.horas) / 1000;
+    h.casaKwh += energia(p, "consumo");
+    h.solarKwh += energia(p, "produccion");
     h.cobertura += p.horas;
     // SoC 0 en el export es una celda vacia, no una bateria vacia.
     if (typeof p.soc === "number" && p.soc > 0) h.socFin = p.soc;
@@ -40,7 +41,12 @@ const tipoDia = (fecha) => ([0, 6].includes(fecha.getDay()) ? "finde" : "laborab
 
 export function crearHabitos(horas, { ahora = new Date(), ventanaDias = 60, consumoPorDefectoKwh = 0.3 } = {}) {
   const desde = ahora.getTime() - ventanaDias * DIA_MS;
-  const validas = horas.filter((h) => h.cobertura >= 0.75 && h.inicio.getTime() >= desde && h.inicio.getTime() <= ahora.getTime());
+  const utiles = horas.filter((h) => h.cobertura >= 0.75 && h.inicio.getTime() <= ahora.getTime());
+  const recientes = utiles.filter((h) => h.inicio.getTime() >= desde);
+  const diasRecientes = new Set(recientes.map((h) => h.inicio.toDateString())).size;
+  // Sin una semana reciente se tira de todo el historico, pero sin fiarse.
+  const historicoAntiguo = diasRecientes < 7 && utiles.length > recientes.length;
+  const validas = historicoAntiguo ? utiles : recientes;
   const dias = new Set(validas.map((h) => h.inicio.toDateString())).size;
 
   const grupos = new Map();
@@ -57,7 +63,7 @@ export function crearHabitos(horas, { ahora = new Date(), ventanaDias = 60, cons
     if (h.socFin !== null) anotar(`soc|${hora}`, h.socFin);
   }
 
-  const confianza = dias >= 21 ? "alta" : dias >= 7 ? "media" : "baja";
+  const confianza = historicoAntiguo ? "baja" : dias >= 21 ? "alta" : dias >= 7 ? "media" : "baja";
 
   function consumo(instante) {
     const hora = instante.getHours();
@@ -75,10 +81,13 @@ export function crearHabitos(horas, { ahora = new Date(), ventanaDias = 60, cons
 
   return {
     dias,
+    diasRecientes,
+    historicoAntiguo,
     confianza,
-    aprendiendo: dias < 7,
+    aprendiendo: diasRecientes < 7,
     consumo,
-    solarTipica: (hora) => mediana(`solar|${hora}`),
+    // El sol de otra estacion no vale como prevision.
+    solarTipica: (hora) => (historicoAntiguo ? null : mediana(`solar|${hora}`)),
     socTipico: (hora) => mediana(`soc|${hora}`),
   };
 }
