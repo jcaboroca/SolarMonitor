@@ -54,11 +54,13 @@ test("con pocos dias avisa de que esta aprendiendo", () => {
   assert.equal(habitos.aprendiendo, true);
 });
 
-test("sin historico devuelve el valor por defecto marcado como estimado", () => {
-  const habitos = crearHabitos([], { consumoPorDefectoKwh: 0.25 });
-  const c = habitos.consumo(new Date(2026, 9, 5, 12));
-  assert.equal(c.kwh, 0.25);
-  assert.equal(c.origen, "estimado");
+test("sin historico usa el consumo de fondo de esa hora", () => {
+  const habitos = crearHabitos([]);
+  const c = habitos.consumo(new Date(2026, 9, 5, 13));
+  assert.equal(c.kwh, 0.286);
+  assert.equal(c.origen, "fondo");
+  assert.equal(c.confianza, "baja");
+  assert.equal(crearHabitos([], { fondoW: Array(24).fill(500) }).consumo(new Date(2026, 9, 5, 3)).kwh, 0.5);
 });
 
 test("descarta horas con poca cobertura", () => {

@@ -39,7 +39,10 @@ export function aHoras(registros, unidades = {}) {
 
 const tipoDia = (fecha) => ([0, 6].includes(fecha.getDay()) ? "finde" : "laborable");
 
-export function crearHabitos(horas, { ahora = new Date(), ventanaDias = 60, consumoPorDefectoKwh = 0.3 } = {}) {
+// Casa vacia en agosto de 2026 (nevera, acuario, gambario): mediana de W por hora, curva de 5 min.
+export const FONDO_W = [242, 245, 242, 244, 242, 245, 241, 235, 241, 202, 238, 243, 301, 286, 296, 289, 284, 281, 255, 236, 233, 241, 239, 245];
+
+export function crearHabitos(horas, { ahora = new Date(), ventanaDias = 60, fondoW = FONDO_W } = {}) {
   const desde = ahora.getTime() - ventanaDias * DIA_MS;
   const utiles = horas.filter((h) => h.cobertura >= 0.75 && h.inicio.getTime() <= ahora.getTime());
   const recientes = utiles.filter((h) => h.inicio.getTime() >= desde);
@@ -74,7 +77,7 @@ export function crearHabitos(horas, { ahora = new Date(), ventanaDias = 60, cons
         return { kwh: percentil(valores, 0.5), p25: percentil(valores, 0.25), p75: percentil(valores, 0.75), muestras: valores.length, origen: "habito", confianza };
       }
     }
-    return { kwh: consumoPorDefectoKwh, p25: null, p75: null, muestras: 0, origen: "estimado", confianza: "baja" };
+    return { kwh: fondoW[hora] / 1000, p25: null, p75: null, muestras: 0, origen: "fondo", confianza: "baja" };
   }
 
   const mediana = (clave) => percentil(grupos.get(clave) || [], 0.5);
