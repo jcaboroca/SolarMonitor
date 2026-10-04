@@ -6,6 +6,7 @@ import { aHoras, crearHabitos } from "./asesor/habitos.js";
 import { leerOpenMeteo, calibrar, preverSolar, urlPrevision, urlPrevisionPasada } from "./asesor/prevision.js";
 import { construirHorizonte, decidir, lineaDelDia, reservaRecomendada, BATERIA_POR_DEFECTO, euros, cuando } from "./asesor/motor.js";
 import { combinarAparatos, APARATOS_POR_DEFECTO, CARGA_REFERENCIA } from "./asesor/aparatos.js";
+import { urlMercado, leerMercado, preciosIndexados, INDEXADA_POR_DEFECTO } from "./asesor/mercado.js";
 import { leerSerie } from "./historico.js";
 import { deserializarSerie } from "./datos.js";
 import { hayNube, pedirNube } from "./nube.js";
@@ -18,6 +19,7 @@ const CLAVE_CONFIG = "solar-monitor-asesor";
 const CLAVE_VIVO = "solar-monitor-vivo";
 const CLAVE_PREVISION = "solar-monitor-prevision";
 const CLAVE_CALIBRACION = "solar-monitor-calibracion";
+const CLAVE_MERCADO = "solar-monitor-mercado";
 
 const leerJson = (clave, defecto) => {
   try {
@@ -39,6 +41,8 @@ const POR_DEFECTO = {
   lon: null,
   kWp: null,
   potenciaContratadaKw: 3.1,
+  indexada: true,
+  suplemento: INDEXADA_POR_DEFECTO.suplemento,
   bateria: { ...BATERIA_POR_DEFECTO },
   tarifa: { energia: { ...TARIFA_POR_DEFECTO.energia }, excedentes: TARIFA_POR_DEFECTO.excedentes },
   aparatos: [],
@@ -115,6 +119,22 @@ async function traerPrevision(c) {
 
 const diaIso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
+// REE publica el dia siguiente hacia mediodia: con mirar cada hora basta.
+async function traerMercado(c, ahora) {
+  if (!c.indexada) return null;
+  const cache = leerJson(CLAVE_MERCADO, null);
+  if (cache && cache.dia === diaIso(ahora) && ahora - cache.traido < HORA) return cache;
+  try {
+    const json = await (await fetch(urlMercado(ahora))).json();
+    if (!leerMercado(json).size) throw new Error("REE no ha devuelto precios.");
+    const nuevo = { dia: diaIso(ahora), traido: ahora.getTime(), json };
+    guardarJson(CLAVE_MERCADO, nuevo);
+    return nuevo;
+  } catch (error) {
+    return cache ? { ...cache, fallo: error.message } : { fallo: error.message };
+  }
+}
+
 async function traerCalibracion(c, horas) {
   const conSol = horas.filter((h) => h.solarKwh > 0.01);
   if (c.lat === null || c.lon === null || !conSol.length) return calibrar([], []);
@@ -140,10 +160,10 @@ let contexto = null;
 
 async function calcular() {
   const c = leerConfig();
-  const [vivoGuardado, prevision] = await Promise.all([traerVivo(), traerPrevision(c)]);
+  const ahora = new Date();
+  const [vivoGuardado, prevision, mercadoGuardado] = await Promise.all([traerVivo(), traerPrevision(c), traerMercado(c, ahora)]);
   const estadoWorker = vivoGuardado?.estado;
   const horas = juntarHoras(horasLocales(), horasDelWorker(estadoWorker));
-  const ahora = new Date();
   const habitos = crearHabitos(horas, { ahora });
   const calibracion = await traerCalibracion(c, horas);
   const irradiancia = prevision?.json ? leerOpenMeteo(prevision.json) : [];
@@ -157,13 +177,20 @@ async function calcular() {
   const socTipico = habitos.socTipico(ahora.getHours());
   const socPct = vivo?.soc ?? socTipico ?? 50;
 
+  const mercado = mercadoGuardado?.json ? leerMercado(mercadoGuardado.json) : new Map();
+  const horaria = mercado.size ? preciosIndexados(mercado, { ...INDEXADA_POR_DEFECTO, suplemento: c.suplemento ?? INDEXADA_POR_DEFECTO.suplemento }) : null;
+  const ultimaHoraConPrecio = mercado.size ? Math.max(...mercado.keys()) : null;
+
   contexto = {
     c, ahora, habitos, calibracion, solar, vivo, fresco, socPct,
     socEstimado: !fresco,
-    slots: construirHorizonte({ ahora, vivo: fresco, solar, habitos, tarifa: crearTarifa(c.tarifa) }),
+    slots: construirHorizonte({ ahora, vivo: fresco, solar, habitos, tarifa: crearTarifa({ ...c.tarifa, horaria }) }),
     estadoWorker,
     falloVivo: vivoGuardado?.fallo,
     falloPrevision: prevision?.fallo,
+    falloMercado: mercadoGuardado?.fallo,
+    // Sin precio del mercado para todo el dia siguiente se tira de las medias por periodo.
+    sinPrecioManana: Boolean(c.indexada && (!ultimaHoraConPrecio || ultimaHoraConPrecio < ahora.getTime() + 23 * HORA)),
     sinUbicacion: c.lat === null || c.lon === null,
   };
 }
@@ -261,6 +288,8 @@ function pintarDecision() {
   if (k.sinUbicacion) avisos.push("Sin ubicación no hay previsión solar: ponla en los ajustes.");
   else if (k.falloPrevision) avisos.push(`Previsión del tiempo no disponible (${k.falloPrevision}).`);
   if (!k.sinUbicacion && k.calibracion.confianza === "ninguna") avisos.push("Previsión solar sin calibrar: faltan datos de producción.");
+  if (k.falloMercado) avisos.push(`Precios del mercado no disponibles (${k.falloMercado}): uso medias por periodo.`);
+  else if (k.sinPrecioManana) avisos.push("Los precios de mañana aún no están publicados (REE los da hacia mediodía): para esas horas uso medias por periodo.");
   $("confianza").textContent = [`Confianza: ${decision.confianza || "baja"}.`, ...avisos].join(" ");
 
   pintarVentanas(decision, carga);
@@ -361,6 +390,7 @@ const CAMPOS = [
   ["ajP2", (c) => c.tarifa.energia.P2, (c, v) => (c.tarifa.energia.P2 = v ?? TARIFA_POR_DEFECTO.energia.P2)],
   ["ajP3", (c) => c.tarifa.energia.P3, (c, v) => (c.tarifa.energia.P3 = v ?? TARIFA_POR_DEFECTO.energia.P3)],
   ["ajExcedentes", (c) => c.tarifa.excedentes, (c, v) => (c.tarifa.excedentes = v ?? TARIFA_POR_DEFECTO.excedentes)],
+  ["ajSuplemento", (c) => c.suplemento, (c, v) => (c.suplemento = v ?? INDEXADA_POR_DEFECTO.suplemento)],
 ];
 
 const leerNumero = (input) => {
@@ -371,6 +401,7 @@ const leerNumero = (input) => {
 function pintarAjustes() {
   const c = leerConfig();
   for (const [id, leer] of CAMPOS) $(id).value = leer(c) ?? "";
+  $("ajIndexada").checked = c.indexada;
   const cuerpo = $("tablaAparatos").querySelector("tbody");
   const propios = combinarAparatos(c.aparatos);
   cuerpo.replaceChildren(
@@ -398,6 +429,7 @@ function pintarAjustes() {
 function guardarAjustes() {
   const c = leerConfig();
   for (const [id, , escribir] of CAMPOS) escribir(c, leerNumero($(id)));
+  c.indexada = $("ajIndexada").checked;
   c.aparatos = [...$("tablaAparatos").querySelectorAll("tbody tr")].map((fila) => {
     const propio = { id: fila.dataset.id };
     for (const input of fila.querySelectorAll("input")) {

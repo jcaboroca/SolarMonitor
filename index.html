@@ -109,7 +109,10 @@
           <label>Energía llano P2 (€/kWh) <input type="number" step="0.0001" min="0" id="ajP2"></label>
           <label>Energía valle P3 (€/kWh) <input type="number" step="0.0001" min="0" id="ajP3"></label>
           <label>Excedentes (€/kWh) <input type="number" step="0.0001" min="0" id="ajExcedentes"></label>
-          <p class="ayuda">Precios sin impuestos; el asesor suma el impuesto eléctrico y el IVA.</p>
+          <label class="check"><input type="checkbox" id="ajIndexada"> Tarifa indexada: precio de cada hora según el mercado (REE)</label>
+          <label>Suplemento sobre el mercado (€/kWh) <input type="number" step="0.001" min="0" id="ajSuplemento"></label>
+          <p class="ayuda">Precios sin impuestos; el asesor suma el impuesto eléctrico y el IVA. Con la tarifa indexada,
+            los precios por periodo solo se usan para las horas que REE aún no ha publicado.</p>
           <div class="tabla-envoltorio ancho">
             <table class="tabla" id="tablaAparatos">
               <thead><tr><th>Aparato</th><th class="numero">kWh por uso</th><th class="numero">Duración (h)</th><th class="numero">Pico (W)</th></tr></thead>

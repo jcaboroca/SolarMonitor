@@ -243,6 +243,12 @@ function explicar({ ahora, slots, bateria, socPct, carga, vivo, yaMismo, mejor, 
     }
   }
 
+  const proximas = slots.filter((s) => s.inicio - ahora < 24 * HORA);
+  const barata = proximas.reduce((a, b) => (b.compra < a.compra ? b : a));
+  if (primero.compra - barata.compra > 0.02) {
+    razones.push({ icono: "💶", texto: `Luz de la red ahora: ${centimos(primero.compra)}. La más barata: ${centimos(barata.compra)} ${cuando(barata.inicio, ahora).toLowerCase()}.` });
+  }
+
   if (excedePotencia) {
     razones.push({ icono: "⚡", texto: `Con lo que ya está encendido llegarías a ≈ ${fmt(picoKw, 1)} kW y tienes ${fmt(potenciaContratadaKw, 1)} kW contratados.` });
   }

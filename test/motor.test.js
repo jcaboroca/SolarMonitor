@@ -47,6 +47,7 @@ test("caso 3: precio medio ahora + precio bajo despues → amarillo", () => {
   const r = decidir({ ahora, slots, bateria, socPct: 10, carga: CARGA_REFERENCIA });
   assert.equal(r.estado, "amarillo");
   assert.equal(r.mejor.inicio.getHours(), 22);
+  assert.ok(r.razones.some((x) => /Luz de la red ahora: 13,0 c€\/kWh\. La más barata: 8,0 c€\/kWh a las 22:00/.test(x.texto)), JSON.stringify(r.razones));
 });
 
 test("caso 4: bateria baja + manana nublado → guardar bateria", () => {
