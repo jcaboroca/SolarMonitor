@@ -5,11 +5,17 @@ import { crearTarifa, IMPUESTO_ELECTRICO, IVA } from "../js/asesor/tarifa.js";
 
 const impuestos = (1 + IMPUESTO_ELECTRICO) * (1 + IVA);
 
-test("precio plano por defecto con impuestos", () => {
+test("precios por defecto con impuestos", () => {
   const t = crearTarifa();
   const lunes11 = new Date(2026, 9, 5, 11);
-  assert.ok(Math.abs(t.precioCompra(lunes11) - 0.108727 * impuestos) < 1e-9);
-  assert.ok(Math.abs(t.precioVenta(lunes11) - 0.012645 * impuestos) < 1e-9);
+  assert.ok(Math.abs(t.precioCompra(lunes11) - 0.22 * impuestos) < 1e-9);
+  assert.ok(Math.abs(t.precioVenta(lunes11) - 0.035 * impuestos) < 1e-9);
+  assert.equal(t.precioPlano, false);
+});
+
+test("precio plano", () => {
+  const t = crearTarifa({ energia: { P1: 0.1, P2: 0.1, P3: 0.1 } });
+  assert.equal(t.precioPlano, true);
 });
 
 test("precios por periodo 2.0TD", () => {
@@ -29,5 +35,5 @@ test("una serie horaria manda sobre el periodo", () => {
   const hora = new Date(2026, 9, 5, 11);
   const t = crearTarifa({ impuestoElectrico: 0, iva: 0, horaria: new Map([[hora.getTime(), 0.05]]) });
   assert.equal(t.precioCompra(new Date(2026, 9, 5, 11, 30)), 0.05);
-  assert.equal(t.precioCompra(new Date(2026, 9, 5, 12)), 0.108727);
+  assert.equal(t.precioCompra(new Date(2026, 9, 5, 12)), 0.22);
 });

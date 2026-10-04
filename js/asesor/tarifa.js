@@ -6,11 +6,12 @@ import { periodoTarifa } from "../datos.js";
 export const IMPUESTO_ELECTRICO = 0.0511269632;
 export const IVA = 0.21;
 
-// Precios de la factura de Nexus (2026): energia plana y excedentes, sin impuestos.
+// Octopus Flexi (indexada): medias por periodo de la factura de agosto de 2026, sin
+// impuestos. Orientativas: el precio real cambia cada hora con el mercado.
 export const TARIFA_POR_DEFECTO = {
-  nombre: "2.0TD precio fijo",
-  energia: { P1: 0.108727, P2: 0.108727, P3: 0.108727 },
-  excedentes: 0.012645,
+  nombre: "Octopus Flexi (medias)",
+  energia: { P1: 0.22, P2: 0.157, P3: 0.184 },
+  excedentes: 0.035,
   impuestoElectrico: IMPUESTO_ELECTRICO,
   iva: IVA,
   festivos: [],

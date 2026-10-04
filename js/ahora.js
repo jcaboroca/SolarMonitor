@@ -47,6 +47,8 @@ const POR_DEFECTO = {
 
 function leerConfig() {
   const c = leerJson(CLAVE_CONFIG, {});
+  // Los precios de Nexus que se guardaron al tocar los ajustes ya no valen tras pasar a Octopus.
+  if (c.tarifa?.energia?.P1 === 0.108727 && c.tarifa?.excedentes === 0.012645) delete c.tarifa;
   return {
     ...POR_DEFECTO,
     ...c,
