@@ -6,7 +6,8 @@ export const APARATOS_POR_DEFECTO = [
   { id: "lavadora", nombre: "Lavadora", icono: "🧺", energiaKwh: 0.7, duracionH: 2, potenciaPicoW: 2000, estimado: true },
   { id: "lavavajillas", nombre: "Lavavajillas", icono: "🍽️", energiaKwh: 1, duracionH: 2.5, potenciaPicoW: 2000, estimado: true },
   { id: "secadora", nombre: "Secadora", icono: "💨", energiaKwh: 1.5, duracionH: 2, potenciaPicoW: 1000, estimado: true },
-  { id: "horno", nombre: "Horno", icono: "🔥", energiaKwh: 1.2, duracionH: 1, potenciaPicoW: 2200, estimado: true },
+  // Medido el 3-oct-2026 en la curva de 5 min: ~2,15 kW durante ~30 min.
+  { id: "horno", nombre: "Horno", icono: "🔥", energiaKwh: 1.1, duracionH: 0.5, potenciaPicoW: 2200, estimado: false },
   { id: "termo", nombre: "Termo", icono: "🚿", energiaKwh: 2, duracionH: 2, potenciaPicoW: 1500, estimado: true },
   { id: "coche", nombre: "Cargar coche", icono: "🚗", energiaKwh: 7, duracionH: 4, potenciaPicoW: 2300, estimado: true },
 ];
