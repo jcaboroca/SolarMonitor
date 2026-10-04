@@ -3,6 +3,7 @@
 // Ademas lee la planta de Solarman: en vivo cuando la web pregunta y una vez por hora para el historico.
 
 import { sondear, vincular, leerEstado } from "./solarman.js";
+import { archivar, mesesArchivados, leerMes, horasArchivadas } from "./archivo.js";
 
 const ORIGEN_WEB = "https://jcaboroca.github.io";
 // Las curvas de Solarman van a 5 minutos y abultan; KV admite hasta 25 MB.
@@ -37,14 +38,22 @@ export default {
     if (peticion.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
 
     const url = new URL(peticion.url);
-    const rutas = ["/historico", "/solarman/estado", "/solarman/vincular"];
+    const rutas = ["/historico", "/solarman/estado", "/solarman/vincular", "/solarman/curva"];
     if (!rutas.includes(url.pathname)) return responder("No hay nada aqui.", 404);
 
     const credencial = (peticion.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
     if (!coincide(credencial, entorno.SOLAR_ID)) return responder("Clave incorrecta.", 401);
 
     if (url.pathname === "/solarman/estado" && peticion.method === "GET") {
-      return responder(JSON.stringify(await leerEstado(entorno)), 200, "application/json");
+      const [estado, horasArchivo] = await Promise.all([leerEstado(entorno), horasArchivadas(entorno)]);
+      return responder(JSON.stringify({ ...estado, horasArchivo }), 200, "application/json");
+    }
+
+    if (url.pathname === "/solarman/curva" && peticion.method === "GET") {
+      const mes = url.searchParams.get("mes");
+      if (!mes) return responder(JSON.stringify(await mesesArchivados(entorno)), 200, "application/json");
+      const datos = await leerMes(entorno, mes);
+      return datos ? responder(JSON.stringify(datos), 200, "application/json") : responder("Ese mes no esta archivado.", 404);
     }
 
     if (url.pathname === "/solarman/vincular" && peticion.method === "PUT") {
@@ -70,6 +79,7 @@ export default {
   },
 
   async scheduled(_evento, entorno, contexto) {
-    contexto.waitUntil(sondear(entorno));
+    // Primero el dato de la hora (puede renovar la sesion) y luego lo atrasado.
+    contexto.waitUntil(sondear(entorno).then(() => archivar(entorno)));
   },
 };

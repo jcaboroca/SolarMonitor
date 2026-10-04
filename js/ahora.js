@@ -5,7 +5,7 @@ import { crearTarifa, TARIFA_POR_DEFECTO } from "./asesor/tarifa.js";
 import { aHoras, crearHabitos } from "./asesor/habitos.js";
 import { leerOpenMeteo, calibrar, preverSolar, urlPrevision, urlPrevisionPasada } from "./asesor/prevision.js";
 import { construirHorizonte, decidir, lineaDelDia, reservaRecomendada, BATERIA_POR_DEFECTO, euros, cuando } from "./asesor/motor.js";
-import { combinarAparatos, APARATOS_POR_DEFECTO, CARGA_REFERENCIA } from "./asesor/aparatos.js";
+import { combinarAparatos, APARATOS_POR_DEFECTO, CARGA_REFERENCIA, CONSUMOS_FIJOS } from "./asesor/aparatos.js";
 import { urlMercado, leerMercado, preciosIndexados, INDEXADA_POR_DEFECTO } from "./asesor/mercado.js";
 import { leerSerie } from "./historico.js";
 import { deserializarSerie } from "./datos.js";
@@ -90,6 +90,15 @@ const horasDelWorker = (estado) =>
     cobertura: Math.min(minutos / 60, 1),
   }));
 
+const horasDelArchivo = (estado) =>
+  (estado?.horasArchivo || []).map(([hora, casaWh, solarWh, soc, minutos]) => ({
+    inicio: new Date(hora * HORA),
+    casaKwh: casaWh / 1000,
+    solarKwh: solarWh / 1000,
+    socFin: soc,
+    cobertura: Math.min(minutos / 60, 1),
+  }));
+
 function horasLocales() {
   const guardado = leerSerie();
   const serie = guardado && deserializarSerie(guardado.serie);
@@ -163,7 +172,7 @@ async function calcular() {
   const ahora = new Date();
   const [vivoGuardado, prevision, mercadoGuardado] = await Promise.all([traerVivo(), traerPrevision(c), traerMercado(c, ahora)]);
   const estadoWorker = vivoGuardado?.estado;
-  const horas = juntarHoras(horasLocales(), horasDelWorker(estadoWorker));
+  const horas = juntarHoras(horasLocales(), horasDelArchivo(estadoWorker), horasDelWorker(estadoWorker));
   const habitos = crearHabitos(horas, { ahora });
   const calibracion = await traerCalibracion(c, horas);
   const irradiancia = prevision?.json ? leerOpenMeteo(prevision.json) : [];
@@ -421,6 +430,17 @@ function pintarAjustes() {
         td.append(input);
         fila.append(td);
       }
+      return fila;
+    })
+  );
+  $("tablaFijos").querySelector("tbody").replaceChildren(
+    ...CONSUMOS_FIJOS.map((f) => {
+      const fila = elemento("tr");
+      fila.append(
+        elemento("td", "", `${f.icono} ${f.nombre}`),
+        elemento("td", "ayuda", f.detalle),
+        elemento("td", "numero", f.kwhDia === null ? "—" : `≈ ${fmt(f.kwhDia)} kWh`)
+      );
       return fila;
     })
   );

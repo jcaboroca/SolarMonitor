@@ -7,7 +7,7 @@ import {
 import { textoDelPdf, interpretarFactura, revisarFactura, lecturasFrenteAFacturado } from "./factura.js";
 import { areaApilada, barrasApiladas, barrasAgrupadas, mapaCalor, lineaSimple, COLORES } from "./graficas.js";
 import { leerHistorico, guardarMes, borrarMes, importarHistorico, exportarTodo, analizarHistorico, mesDominante, nombreMes, leerCurvas, guardarCurva, leerSerie, guardarSerie } from "./historico.js";
-import { hayNube, urlNube, claveMaestra, configurarNube, bajarDeNube, subirANube, sincronizarPronto } from "./nube.js";
+import { hayNube, urlNube, claveMaestra, configurarNube, bajarDeNube, subirANube, sincronizarPronto, pedirNube } from "./nube.js";
 import * as datadis from "./datadis.js";
 import { iniciarAhora, pintarAhora } from "./ahora.js";
 
@@ -1241,6 +1241,64 @@ window.addEventListener("resize", () => {
     pintarMes();
   }, 150);
 });
+
+// --- Curva archivada por el Worker -------------------------------------------
+
+// Mismas cabeceras que el Excel de Solarman: asi pasa por el mismo camino.
+const CABECERAS_SOLARMAN = [
+  "Hora actualizada", "Potencia de producción(W)", "Potencia de consumo(W)", "Poder adquisitivo(W)",
+  "Potencia de alimentación(W)", "Potencia de carga(W)", "Poder de descarga(W)", "SoC(%)",
+];
+
+async function prepararDesdeSolarman() {
+  if (!hayNube()) return;
+  try {
+    const respuesta = await pedirNube("/solarman/curva");
+    if (!respuesta.ok) return;
+    const meses = Object.entries(await respuesta.json()).sort(([a], [b]) => b.localeCompare(a));
+    if (!meses.length) return;
+    $("mesSolarman").replaceChildren(
+      ...meses.map(([mes, dias]) => {
+        const opcion = document.createElement("option");
+        opcion.value = mes;
+        opcion.textContent = `${nombreMes(mes)} (${dias} días)`;
+        return opcion;
+      })
+    );
+    $("desdeSolarman").hidden = false;
+  } catch {
+    // Sin conexión con la nube la tarjeta simplemente no aparece.
+  }
+}
+
+async function traerDeSolarman() {
+  const marca = $("estadoSolarman");
+  const mes = $("mesSolarman").value;
+  marca.className = "estado";
+  marca.textContent = "Trayendo…";
+  try {
+    const respuesta = await pedirNube(`/solarman/curva?mes=${encodeURIComponent(mes)}`);
+    if (!respuesta.ok) throw new Error(`La nube ha respondido ${respuesta.status}.`);
+    const { dias } = await respuesta.json();
+    const filas = Object.keys(dias)
+      .sort()
+      .flatMap((dia) => dias[dia].map(([t, ...valores]) => [new Date(t * 1000), ...valores.map((v) => v ?? "")]));
+    estado.cabeceras = CABECERAS_SOLARMAN;
+    estado.filas = filas;
+    estado.unidades = CABECERAS_SOLARMAN.map(unidadDeCabecera);
+    estado.roles = detectarRoles(CABECERAS_SOLARMAN);
+    marca.textContent = `${nombreMes(mes)} · ${filas.length.toLocaleString("es-ES")} registros de Solarman`;
+    $("estadoDatos").textContent = "";
+    pintarMapeo();
+    recalcular();
+  } catch (error) {
+    marca.className = "estado error";
+    marca.textContent = error.message;
+  }
+}
+
+$("traerSolarman").addEventListener("click", traerDeSolarman);
+prepararDesdeSolarman();
 
 // --- Pestañas --------------------------------------------------------------
 

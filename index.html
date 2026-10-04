@@ -119,6 +119,13 @@
               <tbody></tbody>
             </table>
           </div>
+          <div class="tabla-envoltorio ancho">
+            <h3>Siempre enchufados (medido con la casa vacía, agosto)</h3>
+            <table class="tabla" id="tablaFijos">
+              <thead><tr><th>Aparato</th><th>Qué se ve en la curva</th><th class="numero">Al día</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
         </form>
         <h3>Dato en vivo de Solarman</h3>
         <p class="ayuda">
@@ -150,6 +157,16 @@
         <span>Arrastra aquí el <b>.pdf</b> del mismo mes (opcional)</span>
         <span class="estado" id="estadoFactura"></span>
       </label>
+    </section>
+
+    <section class="tarjeta" id="desdeSolarman" hidden>
+      <h2>Desde Solarman</h2>
+      <p class="ayuda">El Worker archiva cada noche la curva de 5 minutos del día anterior. Sustituye al Excel: elige el mes y tráelo.</p>
+      <div class="opciones">
+        <label>Mes <select id="mesSolarman"></select></label>
+        <button class="btn primario" type="button" id="traerSolarman">Traer</button>
+        <span class="estado" id="estadoSolarman"></span>
+      </div>
     </section>
 
     <section class="tarjeta" id="datadis">

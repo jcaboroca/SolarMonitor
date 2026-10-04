@@ -13,6 +13,15 @@ export const APARATOS_POR_DEFECTO = [
 
 export const CARGA_REFERENCIA = { id: "referencia", nombre: "Consumo grande", icono: "⚡", energiaKwh: 1, duracionH: 1, potenciaPicoW: 1000, estimado: false };
 
+// Siempre enchufados: no se programan, pero explican el consumo de fondo.
+// Medidos en la curva de 5 min con la casa vacía (5-20 de agosto de 2026).
+export const CONSUMOS_FIJOS = [
+  { id: "nevera", nombre: "Nevera", icono: "🧊", detalle: "Motor de ~70 W en marcha ~2/3 del tiempo (≈ 47 W de media). Por confirmar: si no para nunca, gasta más.", kwhDia: 1.1 },
+  { id: "acuario", nombre: "Acuario grande", icono: "🐠", detalle: "Luz fuerte ≈ 72 W de 12 a 17 h. Los LED nocturnos (17-23 h) no se distinguen en la curva.", kwhDia: 0.36 },
+  { id: "gambario", nombre: "Gambario", icono: "🦐", detalle: "Luz ≈ 25 W, se apaga a las 19:00 (hora de encendido por confirmar).", kwhDia: null },
+  { id: "veinticuatro", nombre: "Bombas, calentadores y resto (24 h)", icono: "❓", detalle: "≈ 175 W que nunca se apagan. Sin separar: filtros, calentadores, wifi…", kwhDia: 4.2 },
+];
+
 /** Mezcla los perfiles guardados por el usuario sobre los de fabrica. */
 export function combinarAparatos(guardados = []) {
   const porId = new Map(guardados.map((a) => [a.id, a]));
