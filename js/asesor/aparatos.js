@@ -8,8 +8,7 @@ export const APARATOS_POR_DEFECTO = [
   { id: "secadora", nombre: "Secadora", icono: "💨", energiaKwh: 1.5, duracionH: 2, potenciaPicoW: 1000, estimado: true },
   // Medido el 3-oct-2026 en la curva de 5 min: ~2,15 kW durante ~30 min.
   { id: "horno", nombre: "Horno", icono: "🔥", energiaKwh: 1.1, duracionH: 0.5, potenciaPicoW: 2200, estimado: false },
-  { id: "termo", nombre: "Termo", icono: "🚿", energiaKwh: 2, duracionH: 2, potenciaPicoW: 1500, estimado: true },
-  { id: "coche", nombre: "Cargar coche", icono: "🚗", energiaKwh: 7, duracionH: 4, potenciaPicoW: 2300, estimado: true },
+  { id: "vitro", nombre: "Vitrocerámica", icono: "🍳", energiaKwh: 0.9, duracionH: 0.75, potenciaPicoW: 2000, estimado: true },
 ];
 
 export const CARGA_REFERENCIA = { id: "referencia", nombre: "Consumo grande", icono: "⚡", energiaKwh: 1, duracionH: 1, potenciaPicoW: 1000, estimado: false };
@@ -25,6 +24,6 @@ export function combinarAparatos(guardados = []) {
         .filter((campo) => Number.isFinite(propio[campo]) && propio[campo] > 0)
         .map((campo) => [campo, propio[campo]])
     );
-    return { ...a, ...limpio, estimado: Object.keys(limpio).length === 0 };
+    return { ...a, ...limpio, estimado: a.estimado && Object.keys(limpio).length === 0 };
   });
 }
