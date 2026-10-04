@@ -63,6 +63,24 @@ test("registrarHora resta los acumulados y anota en la hora de la lectura anteri
   assert.deepEqual(e.horas, [[Math.floor(T0 / HORA), 400, 1200, 0, 300, 60, 60]]);
 });
 
+test("una lectura a las :58 no repite hora ni deja huecos", () => {
+  const base = Math.floor(T0 / HORA) * HORA;
+  const tiempos = [base + 58 * 60000, base + 2 * HORA + 1 * 60000, base + 2 * HORA + 58 * 60000, base + 4 * HORA + 2 * 60000];
+  let e = null;
+  tiempos.forEach((t, i) => (e = registrarHora(e, normalizar(planta({ lastUpdateTime: t / 1000, useValue: 3 + i * 0.3 })))));
+  assert.deepEqual(e.horas.map((h) => h[0] - base / HORA), [1, 2, 3]);
+});
+
+test("dos tramos en la misma hora se suman", () => {
+  const base = Math.floor(T0 / HORA) * HORA;
+  let e = registrarHora(null, normalizar(planta({ lastUpdateTime: (base + 5 * 60000) / 1000, useValue: 3 })));
+  e = registrarHora(e, normalizar(planta({ lastUpdateTime: (base + 25 * 60000) / 1000, useValue: 3.1 })));
+  e = registrarHora(e, normalizar(planta({ lastUpdateTime: (base + 45 * 60000) / 1000, useValue: 3.3 })));
+  assert.equal(e.horas.length, 1);
+  assert.equal(e.horas[0][1], 300);
+  assert.equal(e.horas[0][6], 40);
+});
+
 test("al cambiar de dia usa el cierre del dia anterior", () => {
   const a = normalizar(planta({ useValue: 9 }));
   const b = normalizar(planta({ lastUpdateTime: (T0 + HORA) / 1000, acceptDay: "20261004", useValue: 0.1, generationValue: 0, buyValue: 0.1, gridValue: 0 }));

@@ -88,7 +88,14 @@ export function registrarHora(estado, lectura, cierre = null) {
       );
     }
     if (delta && Object.values(delta).every((v) => v !== null)) {
-      horas.push([Math.floor(previo.t / HORA), delta.casa, delta.solar, delta.compra, delta.venta, lectura.soc, Math.round(intervalo / 60000)]);
+      // Punto medio: el datalogger sube a :58 o a :02 y la hora de la lectura anterior baila.
+      const clave = Math.floor((previo.t + lectura.t) / 2 / HORA);
+      const ultima = horas.at(-1);
+      if (ultima?.[0] === clave) {
+        horas[horas.length - 1] = [clave, ultima[1] + delta.casa, ultima[2] + delta.solar, ultima[3] + delta.compra, ultima[4] + delta.venta, lectura.soc, ultima[6] + Math.round(intervalo / 60000)];
+      } else {
+        horas.push([clave, delta.casa, delta.solar, delta.compra, delta.venta, lectura.soc, Math.round(intervalo / 60000)]);
+      }
     }
   }
   return { ultimo: lectura, horas: horas.slice(-MAX_HORAS), error: null, caducada: false };
