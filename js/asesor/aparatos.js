@@ -17,9 +17,9 @@ export const CARGA_REFERENCIA = { id: "referencia", nombre: "Consumo grande", ic
 // Medidos en la curva de 5 min con la casa vacía (5-20 de agosto de 2026).
 export const CONSUMOS_FIJOS = [
   { id: "nevera", nombre: "Nevera", icono: "🧊", detalle: "Motor de ~70 W en marcha ~2/3 del tiempo (≈ 47 W de media). Por confirmar: si no para nunca, gasta más.", kwhDia: 1.1 },
-  { id: "acuario", nombre: "Acuario grande", icono: "🐠", detalle: "Luz fuerte ≈ 72 W de 12 a 17 h. Los LED nocturnos (17-23 h) no se distinguen en la curva.", kwhDia: 0.36 },
+  { id: "acuario", nombre: "Acuario grande", icono: "🐠", detalle: "Luz ≈ 105 W de 12 a 17 h; bomba y calentador ≈ 25-30 W las 24 h (medido al pararlo, oct-2026).", kwhDia: 1.2 },
   { id: "gambario", nombre: "Gambario", icono: "🦐", detalle: "Luz ≈ 25 W, se apaga a las 19:00 (hora de encendido por confirmar).", kwhDia: null },
-  { id: "veinticuatro", nombre: "Bombas, calentadores y resto (24 h)", icono: "❓", detalle: "≈ 175 W que nunca se apagan. Sin separar: filtros, calentadores, wifi…", kwhDia: 4.2 },
+  { id: "veinticuatro", nombre: "Resto que nunca se apaga (24 h)", icono: "❓", detalle: "≈ 145 W sin identificar: gambario (bomba y calentador), wifi… y quizá la nevera.", kwhDia: 3.5 },
 ];
 
 /** Mezcla los perfiles guardados por el usuario sobre los de fabrica. */
