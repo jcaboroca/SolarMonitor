@@ -3,8 +3,9 @@
 
 // pdf.js se carga al leer el primer PDF: asi el lector se puede probar en Node.
 async function cargarPdfjs() {
+  await import("./flujos.js");
   const pdfjs = await import("../vendor/pdf.min.js");
-  pdfjs.GlobalWorkerOptions.workerSrc = new URL("../vendor/pdf.worker.min.js", import.meta.url).href;
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL("./pdf-worker.js", import.meta.url).href;
   return pdfjs;
 }
 
