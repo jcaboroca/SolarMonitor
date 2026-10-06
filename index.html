@@ -230,16 +230,28 @@
 
     <p class="vacio">Carga el .xlsx del datalogger en <b>Datos</b> y aquí verás si la factura cuadra.</p>
 
+    <p class="leyenda-fuentes">
+      De dónde sale cada dato:
+      <span class="fuente factura">📄 Factura</span> el PDF ·
+      <span class="fuente solarman">☀️ Solarman</span> lo que midió tu instalación (Excel o «Desde Solarman») ·
+      <span class="fuente datadis">🔌 datadis</span> la curva hora a hora del contador
+    </p>
+
     <section id="resumen" hidden>
+      <p class="origen" id="origenResumen"></p>
       <div class="fichas" id="fichas"></div>
     </section>
 
     <section class="tarjeta" id="comparacion" hidden>
-      <h2>¿Cuadra la factura?</h2>
-      <p class="ayuda">Los valores de la izquierda salen del PDF, si se han podido leer. Corrige a mano lo que haga falta.</p>
+      <h2>Factura frente a tu instalación</h2>
+      <p class="ayuda">
+        <span class="fuente factura">📄 Factura</span> sale del PDF; si no se ha podido leer, escríbelo a mano.
+        <span class="fuente solarman">☀️ Solarman</span> es lo que midió tu instalación en ese mes.
+      </p>
+      <p class="origen" id="origenComparacion"></p>
       <div class="tabla-envoltorio">
         <table class="tabla" id="tablaFactura">
-          <thead><tr><th>Concepto</th><th class="numero">Según la factura</th><th class="numero">Según el datalogger</th><th class="numero">Diferencia</th></tr></thead>
+          <thead><tr><th>Concepto</th><th class="numero"><span class="fuente factura">📄 Factura</span></th><th class="numero"><span class="fuente solarman">☀️ Solarman</span></th><th class="numero">Diferencia</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -251,8 +263,8 @@
     </section>
 
     <section class="tarjeta" id="revision" hidden>
-      <h2>Las cuentas de la factura</h2>
-      <p class="ayuda">Aquí no se compara nada con tu instalación: se rehacen las operaciones de la factura con sus propios números. Si algo no cuadra, es un error de facturación.</p>
+      <h2>Las cuentas de la factura <span class="fuente factura">📄 Factura</span></h2>
+      <p class="ayuda">Solo con los números del PDF: se rehacen sus operaciones, sin compararlas con tu instalación. Si algo no cuadra, es un error de facturación.</p>
       <p class="veredicto" id="veredictoRevision"></p>
       <div class="tabla-envoltorio">
         <table class="tabla" id="tablaRevision">
@@ -266,7 +278,7 @@
 
     <section class="tarjeta" id="solapeContador" hidden>
       <div class="titulo-panel">
-        <h2>El contador, hora a hora</h2>
+        <h2>El contador, hora a hora <span class="fuente datadis">🔌 datadis</span></h2>
         <label>Mes
           <select id="mesContador"></select>
         </label>

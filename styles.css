@@ -344,6 +344,20 @@ label { font-size: 13px; color: var(--apagado); display: inline-flex; gap: 6px; 
 @media (prefers-reduced-motion: reduce) {
   .luz { transition: none; }
 }
+
+/* --- De dónde sale cada dato ----------------------------------------------- */
+
+.fuente {
+  display: inline-block; white-space: nowrap; vertical-align: baseline;
+  font-size: 12px; font-weight: 600; line-height: 1.4;
+  border: 1px solid currentColor; border-radius: 999px; padding: 0 8px;
+}
+.fuente.factura { color: #c9a0ff; }
+.fuente.solarman { color: var(--acento); }
+.fuente.datadis { color: var(--azul); }
+h2 .fuente, h3 .fuente { margin-left: 6px; }
+.leyenda-fuentes { font-size: 13px; color: var(--apagado); margin: 0 0 14px; line-height: 2; }
+.origen { font-size: 13px; color: var(--apagado); margin: 0 0 10px; line-height: 1.8; }
 @media (prefers-contrast: more) {
   .luz { box-shadow: none; background: none; border-width: 4px; }
   .chip[aria-checked="true"] { background: none; border-width: 2px; }

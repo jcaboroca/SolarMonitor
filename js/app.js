@@ -200,6 +200,9 @@ function totales() {
 
 function pintarFichas() {
   const t = totales();
+  const mes = mesDominante(estado.dias.map((d) => d.fecha));
+  $("origenResumen").innerHTML =
+    `<span class="fuente solarman">☀️ Solarman</span> ${mes ? nombreMes(mes) : ""} · ${estado.dias.length} días medidos por tu instalación`;
   const fichas = [
     ["Producción solar", t.produccion, "kWh", COLORES.produccion],
     ["Consumo de la casa", t.consumo, "kWh", COLORES.consumo],
@@ -273,8 +276,31 @@ function pintarComparacion(refrescarFactura = false) {
   });
 
   $("textoFactura").textContent = leido?.texto || "";
+  pintarOrigenComparacion(leido);
   $("comparacion").hidden = false;
   pintarDesvios();
+}
+
+const fechaCorta = (valor) => new Date(valor).toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+
+// Que se vea de qué periodo es cada columna y si no casan.
+function pintarOrigenComparacion(f) {
+  const mesSolarman = mesDominante(estado.dias.map((d) => d.fecha));
+  const partes = [`<span class="fuente solarman">☀️ Solarman</span> ${mesSolarman ? nombreMes(mesSolarman) : "—"}`];
+  let mesFactura = null;
+  if (f?.desde && f?.hasta) {
+    const desde = new Date(f.desde), hasta = new Date(f.hasta);
+    mesFactura = mesDominante([new Date((desde.getTime() + hasta.getTime()) / 2)]);
+    partes.unshift(`<span class="fuente factura">📄 Factura</span> del ${fechaCorta(desde)} al ${fechaCorta(hasta)}`);
+  } else {
+    partes.unshift(`<span class="fuente factura">📄 Factura</span> sin PDF cargado`);
+  }
+  const distintos = mesFactura && mesSolarman && mesFactura !== mesSolarman;
+  $("origenComparacion").innerHTML =
+    partes.join(" · ") +
+    (distintos
+      ? `<br><b class="desvio-mal">⚠️ No son del mismo mes: la factura es de ${nombreMes(mesFactura)} y los datos de Solarman de ${nombreMes(mesSolarman)}. Trae ${nombreMes(mesFactura)} en Datos antes de comparar.</b>`
+      : "");
 }
 
 function pintarDesvios() {
@@ -379,9 +405,10 @@ function pintarLecturas(f) {
   const total = filas.reduce((suma, fila) => suma + fila.diferencia, 0);
   const precio = f.precio.P1 ?? 0;
   caja.innerHTML =
-    `<h3>Lo que marcó el contador y lo que te facturaron</h3>` +
+    `<h3>Lecturas del contador impresas en la factura <span class="fuente factura">📄 Factura</span></h3>` +
+    `<p class="ayuda">Las dos columnas salen del PDF: lo que la factura dice que marcó el contador y lo que cobra. No es datadis.</p>` +
     `<div class="tabla-envoltorio"><table class="tabla">` +
-    `<thead><tr><th>Periodo</th><th class="numero">Contador</th><th class="numero">Facturado</th><th class="numero">Diferencia</th></tr></thead><tbody>` +
+    `<thead><tr><th>Periodo</th><th class="numero">Lectura</th><th class="numero">Facturado</th><th class="numero">Diferencia</th></tr></thead><tbody>` +
     filas
       .map(
         (fila) =>
@@ -598,14 +625,14 @@ function pintarDetalleMes(mes) {
     (faltan.length ? ` Falta cargar ${faltan.join(" y ")} de este mes.` : "") +
     `</p>` +
     `<div class="fichas">` +
-    ficha("Producción solar", fila.medido?.produccion, "kWh", COLORES.produccion) +
-    ficha("Consumo de la casa", fila.medido?.consumo, "kWh", COLORES.consumo) +
-    ficha("Comprado (contador)", c?.total, "kWh", COLORES.importada) +
-    ficha("Vertido (contador)", c?.vertido, "kWh", COLORES.exportada) +
-    ficha("Importe", fila.factura?.importe, "€", COLORES.carga) +
+    ficha("Producción solar ☀️", fila.medido?.produccion, "kWh", COLORES.produccion) +
+    ficha("Consumo de la casa ☀️", fila.medido?.consumo, "kWh", COLORES.consumo) +
+    ficha("Comprado 🔌 datadis", c?.total, "kWh", COLORES.importada) +
+    ficha("Vertido 🔌 datadis", c?.vertido, "kWh", COLORES.exportada) +
+    ficha("Importe 📄", fila.factura?.importe, "€", COLORES.carga) +
     `</div>` +
     `<div class="tabla-envoltorio"><table class="tabla">` +
-    `<thead><tr><th>Concepto</th><th class="numero">Tu casa</th><th class="numero">Contador</th><th class="numero">Factura</th></tr></thead><tbody>` +
+    `<thead><tr><th>Concepto</th><th class="numero"><span class="fuente solarman">☀️ Solarman</span></th><th class="numero"><span class="fuente datadis">🔌 datadis</span></th><th class="numero"><span class="fuente factura">📄 Factura</span></th></tr></thead><tbody>` +
     conceptos
       .map(([etiqueta, propio, contador, factura]) => `<tr><td>${etiqueta}</td>${dato(propio)}${dato(contador)}${dato(factura)}</tr>`)
       .join("") +
