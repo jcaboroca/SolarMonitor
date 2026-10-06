@@ -53,6 +53,8 @@ function leerConfig() {
   const c = leerJson(CLAVE_CONFIG, {});
   // Los precios de Nexus que se guardaron al tocar los ajustes ya no valen tras pasar a Octopus.
   if (c.tarifa?.energia?.P1 === 0.108727 && c.tarifa?.excedentes === 0.012645) delete c.tarifa;
+  // El suplemento de 4,6 c€ salio de solo 8 dias de agosto; septiembre lo afino a 5 c€.
+  if (c.suplemento === 0.046) delete c.suplemento;
   return {
     ...POR_DEFECTO,
     ...c,

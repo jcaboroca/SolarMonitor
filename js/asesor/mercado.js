@@ -5,10 +5,10 @@ import { periodoTarifa } from "../datos.js";
 
 const SERIE = "Precio mercado spot";
 
-// Factura de Octopus Flexi de agosto de 2026: "energia y margen" = mercado + ~4,6 c€/kWh
-// en los tres periodos; peajes + cargos del sistema por periodo (2.0TD). Sin impuestos.
+// Facturas de Octopus Flexi: "energia y margen" = mercado + ~5 c€/kWh (septiembre de 2026,
+// ponderando cada hora por la compra real); peajes + cargos por periodo (2.0TD). Sin impuestos.
 export const INDEXADA_POR_DEFECTO = {
-  suplemento: 0.046,
+  suplemento: 0.05,
   peajes: { P1: 0.097, P2: 0.029, P3: 0.003 },
 };
 

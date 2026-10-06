@@ -44,17 +44,28 @@ test("precio indexado = mercado + suplemento + peajes y cargos del periodo", () 
   const lunes3 = new Date(2026, 9, 5, 3).getTime();
   const mercado = new Map([[lunes11, 0.08], [lunes3, 0.13]]);
   const precios = preciosIndexados(mercado, INDEXADA_POR_DEFECTO);
-  assert.ok(Math.abs(precios.get(lunes11) - (0.08 + 0.046 + 0.097)) < 1e-12);
-  assert.ok(Math.abs(precios.get(lunes3) - (0.13 + 0.046 + 0.003)) < 1e-12);
+  assert.ok(Math.abs(precios.get(lunes11) - (0.08 + 0.05 + 0.097)) < 1e-12);
+  assert.ok(Math.abs(precios.get(lunes3) - (0.13 + 0.05 + 0.003)) < 1e-12);
 });
 
-test("con la media de agosto reproduce los precios de la factura de Octopus", () => {
-  // Medias del mercado por periodo del 24 al 31 de agosto de 2026 (REE).
+test("con el mercado ponderado de septiembre reproduce la factura de Octopus", () => {
+  // Mercado de septiembre de 2026 (REE) ponderado por la compra real de cada hora.
+  const ponderado = { P1: 0.126, P2: 0.167, P3: 0.178 };
+  const factura = { P1: 0.274, P2: 0.248, P3: 0.232 };
+  const horas = { P1: new Date(2026, 8, 7, 11), P2: new Date(2026, 8, 7, 9), P3: new Date(2026, 8, 7, 3) };
+  for (const p of ["P1", "P2", "P3"]) {
+    const precio = preciosIndexados(new Map([[horas[p].getTime(), ponderado[p]]]), INDEXADA_POR_DEFECTO).get(horas[p].getTime());
+    assert.ok(Math.abs(precio - factura[p]) < 0.003, `${p}: ${precio} frente a ${factura[p]}`);
+  }
+});
+
+test("con la media simple de agosto se acerca a la factura de Octopus", () => {
+  // Medias simples (sin ponderar) del mercado por periodo del 24 al 31 de agosto de 2026 (REE).
   const medias = { P1: 0.07784, P2: 0.08302, P3: 0.1325 };
   const factura = { P1: 0.22, P2: 0.157, P3: 0.184 };
   const horas = { P1: new Date(2026, 7, 24, 11), P2: new Date(2026, 7, 24, 9), P3: new Date(2026, 7, 24, 3) };
   for (const p of ["P1", "P2", "P3"]) {
     const precio = preciosIndexados(new Map([[horas[p].getTime(), medias[p]]]), INDEXADA_POR_DEFECTO).get(horas[p].getTime());
-    assert.ok(Math.abs(precio - factura[p]) < 0.003, `${p}: ${precio} frente a ${factura[p]}`);
+    assert.ok(Math.abs(precio - factura[p]) < 0.006, `${p}: ${precio} frente a ${factura[p]}`);
   }
 });
