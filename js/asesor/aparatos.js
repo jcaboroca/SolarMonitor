@@ -4,7 +4,9 @@
 
 export const APARATOS_POR_DEFECTO = [
   { id: "lavadora", nombre: "Lavadora", icono: "🧺", energiaKwh: 0.7, duracionH: 2, potenciaPicoW: 2000, estimado: true },
-  { id: "lavavajillas", nombre: "Lavavajillas", icono: "🍽️", energiaKwh: 1, duracionH: 2.5, potenciaPicoW: 2000, estimado: true },
+  // Medido el 10-oct-2026 (9:00-11:20): cuatro calentones de ~2,2 kW y bomba de ~150 W.
+  { id: "lavavajillas", nombre: "Lavavajillas", icono: "🍽️", energiaKwh: 1.3, duracionH: 2.33, potenciaPicoW: 2300, estimado: false,
+    estimacionPrevia: { energiaKwh: 1, duracionH: 2.5, potenciaPicoW: 2000 } },
   { id: "secadora", nombre: "Secadora", icono: "💨", energiaKwh: 1.5, duracionH: 2, potenciaPicoW: 1000, estimado: true },
   // Medido el 3-oct-2026 en la curva de 5 min: ~2,15 kW durante ~30 min.
   { id: "horno", nombre: "Horno", icono: "🔥", energiaKwh: 1.1, duracionH: 0.5, potenciaPicoW: 2200, estimado: false },
@@ -27,12 +29,14 @@ export function combinarAparatos(guardados = []) {
   const porId = new Map(guardados.map((a) => [a.id, a]));
   return APARATOS_POR_DEFECTO.map((a) => {
     const propio = porId.get(a.id);
-    if (!propio) return a;
+    const { estimacionPrevia = {}, ...base } = a;
+    if (!propio) return base;
+    // Saving the settings stores whatever was on screen: the old estimate is not a user correction.
     const limpio = Object.fromEntries(
       ["energiaKwh", "duracionH", "potenciaPicoW"]
-        .filter((campo) => Number.isFinite(propio[campo]) && propio[campo] > 0)
+        .filter((campo) => Number.isFinite(propio[campo]) && propio[campo] > 0 && propio[campo] !== estimacionPrevia[campo])
         .map((campo) => [campo, propio[campo]])
     );
-    return { ...a, ...limpio, estimado: a.estimado && Object.keys(limpio).length === 0 };
+    return { ...base, ...limpio, estimado: a.estimado && Object.keys(limpio).length === 0 };
   });
 }

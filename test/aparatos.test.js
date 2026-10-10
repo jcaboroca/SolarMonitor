@@ -19,3 +19,12 @@ test("al corregir un valor deja de ser estimado y se ignoran aparatos que ya no 
   assert.equal(lavadora.estimado, false);
   assert.equal(aparatos.some((a) => a.id === "termo"), false);
 });
+
+test("una medida nueva gana a la estimación antigua que quedó guardada en ajustes", () => {
+  const guardado = [{ id: "lavavajillas", energiaKwh: 1, duracionH: 2.5, potenciaPicoW: 2000 }];
+  const lavavajillas = combinarAparatos(guardado).find((a) => a.id === "lavavajillas");
+  assert.deepEqual([lavavajillas.energiaKwh, lavavajillas.duracionH, lavavajillas.potenciaPicoW], [1.3, 2.33, 2300]);
+  assert.equal(lavavajillas.estimado, false);
+  const corregido = combinarAparatos([{ id: "lavavajillas", energiaKwh: 1.6 }]).find((a) => a.id === "lavavajillas");
+  assert.equal(corregido.energiaKwh, 1.6);
+});
