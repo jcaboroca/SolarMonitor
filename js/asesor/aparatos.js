@@ -3,8 +3,8 @@
 // avisar de la potencia contratada; `energiaKwh` para el coste.
 
 export const APARATOS_POR_DEFECTO = [
-  // Medida el 12-oct-2026 (~10:00-12:05): 0,9 kWh menos ~0,15 de café en la vitro y leche en el microondas a la vez.
-  { id: "lavadora", nombre: "Lavadora", icono: "🧺", energiaKwh: 0.75, duracionH: 2.17, potenciaPicoW: 2000, estimado: false,
+  // Medida el 12-oct-2026 (~10:00-12:05): 0,9 kWh menos ~0,2 de café (10 min de vitro) y leche (1 min de microondas).
+  { id: "lavadora", nombre: "Lavadora", icono: "🧺", energiaKwh: 0.7, duracionH: 2.17, potenciaPicoW: 2000, estimado: false,
     estimacionPrevia: { energiaKwh: 0.7, duracionH: 2, potenciaPicoW: 2000 } },
   // Medido el 10-oct-2026 (9:00-11:20): cuatro calentones de ~2,2 kW y bomba de ~150 W.
   { id: "lavavajillas", nombre: "Lavavajillas", icono: "🍽️", energiaKwh: 1.3, duracionH: 2.33, potenciaPicoW: 2300, estimado: false,
