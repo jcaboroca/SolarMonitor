@@ -14,7 +14,9 @@ export const APARATOS_POR_DEFECTO = [
     estimacionPrevia: { energiaKwh: 1.5, duracionH: 2, potenciaPicoW: 1000 } },
   // Medido el 3-oct-2026 en la curva de 5 min: ~2,15 kW durante ~30 min.
   { id: "horno", nombre: "Horno", icono: "🔥", energiaKwh: 1.1, duracionH: 0.5, potenciaPicoW: 2200, estimado: false },
-  { id: "vitro", nombre: "Vitrocerámica", icono: "🍳", energiaKwh: 0.9, duracionH: 0.75, potenciaPicoW: 2000, estimado: true },
+  // Detectada en 15 mediodías laborables (mayo-oct 2026): ~30 min a ~2,3 kW, 1,1 kWh; con dos fuegos llega a 4-6 kW.
+  { id: "vitro", nombre: "Vitrocerámica", icono: "🍳", energiaKwh: 1.1, duracionH: 0.5, potenciaPicoW: 2300, estimado: false,
+    estimacionPrevia: { energiaKwh: 0.9, duracionH: 0.75, potenciaPicoW: 2000 } },
 ];
 
 export const CARGA_REFERENCIA = { id: "referencia", nombre: "Consumo grande", icono: "⚡", energiaKwh: 1, duracionH: 1, potenciaPicoW: 1000, estimado: false };
