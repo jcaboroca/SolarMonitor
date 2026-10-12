@@ -13,10 +13,10 @@ test("un aparato medido no vuelve a estimado al guardar ajustes sin cambios", ()
 });
 
 test("al corregir un valor deja de ser estimado y se ignoran aparatos que ya no existen", () => {
-  const aparatos = combinarAparatos([{ id: "lavadora", energiaKwh: 0.5 }, { id: "termo", energiaKwh: 3 }]);
-  const lavadora = aparatos.find((a) => a.id === "lavadora");
-  assert.equal(lavadora.energiaKwh, 0.5);
-  assert.equal(lavadora.estimado, false);
+  const aparatos = combinarAparatos([{ id: "secadora", energiaKwh: 0.5 }, { id: "termo", energiaKwh: 3 }]);
+  const secadora = aparatos.find((a) => a.id === "secadora");
+  assert.equal(secadora.energiaKwh, 0.5);
+  assert.equal(secadora.estimado, false);
   assert.equal(aparatos.some((a) => a.id === "termo"), false);
 });
 

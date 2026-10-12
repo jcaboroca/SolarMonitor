@@ -3,7 +3,9 @@
 // avisar de la potencia contratada; `energiaKwh` para el coste.
 
 export const APARATOS_POR_DEFECTO = [
-  { id: "lavadora", nombre: "Lavadora", icono: "🧺", energiaKwh: 0.7, duracionH: 2, potenciaPicoW: 2000, estimado: true },
+  // Medida el 12-oct-2026 (9:55-12:05): calentón al principio (pico tapado por un hueco de la curva) y motor ~+150 W al final.
+  { id: "lavadora", nombre: "Lavadora", icono: "🧺", energiaKwh: 0.9, duracionH: 2.17, potenciaPicoW: 2000, estimado: false,
+    estimacionPrevia: { energiaKwh: 0.7, duracionH: 2, potenciaPicoW: 2000 } },
   // Medido el 10-oct-2026 (9:00-11:20): cuatro calentones de ~2,2 kW y bomba de ~150 W.
   { id: "lavavajillas", nombre: "Lavavajillas", icono: "🍽️", energiaKwh: 1.3, duracionH: 2.33, potenciaPicoW: 2300, estimado: false,
     estimacionPrevia: { energiaKwh: 1, duracionH: 2.5, potenciaPicoW: 2000 } },
