@@ -1,6 +1,6 @@
 # Instrumento solar — especificación visual y técnica
 
-**Estado: LISTA PARA F1** · 16-oct-2026 · revisión 3. Consolida la rev. 2 aprobada y la
+**Estado: EN EJECUCIÓN (F1–F4)** · 17-oct-2026 · revisión 4. **La enmienda del §12 prevalece sobre lo que contradiga** (presupuesto y dirección del prototipo de *Ahora*). Revisión 3: Consolida la rev. 2 aprobada y la
 auditoría C1–C7 (presupuesto, movimiento reducido, tareas largas, service worker, cambio
 horario y trazabilidad estructurada), con las decisiones D1–D7 cerradas. **«Lista para F1»
 significa que se puede empezar F1. No significa que F1 esté implementada ni validada.** Es
@@ -1191,6 +1191,8 @@ Ninguna se ha ejecutado.
 
 ### 7.1 Presupuesto de transferencia
 
+> **Enmienda rev. 4 (§12.1):** el límite de 170 000 B y los límites por fase **quedan sin efecto**. M1 y M2 se siguen midiendo en cada fase y se informan; no bloquean la publicación. El criterio 31 pasa a ser informativo.
+
 **Hoy no hay línea base medida.** Todas las cifras de esta sección son límites o
 estimaciones, salvo el tamaño de las fuentes, que es el de los ficheros.
 
@@ -1794,3 +1796,41 @@ cada fase.
 | Phosphor no tiene icono de lavavajillas | Del recurso | `fork-knife` con el nombre siempre al lado (§3.5) |
 | Margen de 22 048 B para todo lo que no son fuentes | Riesgo | Límites por fase y contingencia medida (§7.1) |
 | El canvas no se adapta a `forced-colors` | Del recurso | Tablas alternativas (§6.3) |
+
+---
+
+## 12. Enmienda rev. 4 (17-oct-2026)
+
+Decisiones del dueño tras revisar el prototipo de *Ahora* (dirección «esfera»):
+
+### 12.1 Presupuesto
+- **Sin límite de peso.** Se miden M1 y M2 en Pages tras publicar cada fase (§7.2) y se
+  informan junto a la cifra anterior. El criterio 31 y la contingencia del §7.1 dejan de
+  bloquear; la contingencia Pi no se aplica.
+
+### 12.2 Alcance y publicación
+- Se ejecutan **F1 a F4** completas. Cada fase se publica (`push` a `main`, GitHub Pages)
+  al cerrarla, con sus pruebas en verde.
+
+### 12.3 Cambios aprobados respecto a esta especificación (dirección del prototipo)
+
+| # | Cambio | Sustituye a |
+|---|---|---|
+| E1 | Veredicto del cuenco en `clamp(28px, 4.4vw, 58px)`, Sans 600 al 85 %, una línea | `--t-display` ≤ 40 px (§2.3) |
+| E2 | Rótulos técnicos en mayúscula Mono 10–11 px con tracking .08em («HOY · VIERNES 16 OCT», «SOL», índices de sección) | Mayúsculas solo en unidades (§2.3) |
+| E3 | *Ahora* con `max-width` 1320 px y dos columnas 7/12 + 5/12 desde 960 px | `45rem` (§3.1) |
+| E4 | Anillo horario exterior (r = 196): marca menor cada 15 min, mayor y numeral cada hora salvo los extremos. `viewBox="0 -22 400 242"`; la geometría del §4.3.5 no cambia | `viewBox="0 0 400 236"` (§4.4) |
+| E5 | La mejor ventana del aparato elegido (`asesor.mejor`) se dibuja sobre la pista en `--bien` (3 px) con topes; cambia al cambiar de aparato | «el arco no se mueve» al cambiar de aparato (§4.7) |
+| E6 | Cielo y suelo: luz radial tenue sobre el horizonte (`--sol` de día, `--estano` de noche, 11 %) y suelo `--pozo` con bordes difuminados bajo el horizonte | Sin decoración (§3.3); no son sombras |
+| E7 | Consumo como agujas de 2,5 u de grosor (sol: 6/4 u) | Grosor único (§4.4) |
+| E8 | «Por qué» como lista visible numerada en la columna de decisión | `<details>` (§5.1) |
+| E9 | Selector de aparatos en filas que se ajustan (sin scroll oculto), elegido con borde `--sol` y tinte 8 % | Segmentado con scroll (§3.4) |
+| E10 | Frescura («● Solarman · hace N min») en la cabecera también en escritorio; pestañas numeradas `01 … 05` en la cabecera ≥ 760 px | Frescura bajo el arco (§4.4) |
+
+Además, del prototipo: lecturas en Mono `clamp(26px, 3.2vw, 44px)` con unidad al 36 % en
+`--texto-3`; exploración del arco con puntero (`touch-action: pan-y`) y flechas, cuyo
+detalle de franja sustituye al cuenco mientras dura (equivale al globo del §4.6); cinta de
+24 h con resumen por tramos. El lenguaje se extiende a las demás pestañas: secciones
+numeradas sin cajas, cifras grandes con unidad atenuada, reglas y agujas en lugar de barras
+decorativas.
+
