@@ -10,7 +10,9 @@ import { urlMercado, leerMercado, preciosIndexados, INDEXADA_POR_DEFECTO } from 
 import { leerSerie } from "./historico.js";
 import { deserializarSerie } from "./datos.js";
 import { hayNube, pedirNube } from "./nube.js";
+import { simular } from "./asesor/simulador.js";
 import { iconoAparato, iconoRazon, forma, htmlIcono } from "./iconos.js";
+import { modeloArco, pintarArco, elementoCifra, franjaEn, resaltarFranja } from "./arco.js";
 
 const $ = (id) => document.getElementById(id);
 const HORA = 3600000;
@@ -108,7 +110,7 @@ function horasLocales() {
   return serie ? aHoras(serie.registros, serie.unidadesRol) : [];
 }
 
-function juntarHoras(...listas) {
+export function juntarHoras(...listas) {
   const porHora = new Map();
   for (const lista of listas) for (const h of lista) porHora.set(h.inicio.getTime(), h);
   return [...porHora.values()].sort((a, b) => a.inicio - b.inicio);
@@ -175,7 +177,9 @@ async function calcular() {
   const ahora = new Date();
   const [vivoGuardado, prevision, mercadoGuardado] = await Promise.all([traerVivo(), traerPrevision(c), traerMercado(c, ahora)]);
   const estadoWorker = vivoGuardado?.estado;
-  const horas = juntarHoras(horasLocales(), horasDelArchivo(estadoWorker), horasDelWorker(estadoWorker));
+  // El arco necesita saber de dónde sale cada hora; el asesor sigue usando la lista combinada.
+  const horasPorFuente = { local: horasLocales(), archivo: horasDelArchivo(estadoWorker), worker: horasDelWorker(estadoWorker) };
+  const horas = juntarHoras(horasPorFuente.local, horasPorFuente.archivo, horasPorFuente.worker);
   const habitos = crearHabitos(horas, { ahora });
   const calibracion = await traerCalibracion(c, horas);
   const irradiancia = prevision?.json ? leerOpenMeteo(prevision.json) : [];
@@ -198,6 +202,8 @@ async function calcular() {
     socEstimado: !fresco,
     slots: construirHorizonte({ ahora, vivo: fresco, solar, habitos, tarifa: crearTarifa({ ...c.tarifa, horaria }) }),
     estadoWorker,
+    horasPorFuente,
+    previsionTraida: Number.isFinite(prevision?.traido) ? new Date(prevision.traido) : null,
     falloVivo: vivoGuardado?.fallo,
     falloPrevision: prevision?.fallo,
     falloMercado: mercadoGuardado?.fallo,
@@ -240,6 +246,444 @@ function conIcono(e, icono, texto = "") {
   return e;
 }
 
+// --- Instrumento (arco, suelo y «Ver por horas») ---------------------------------
+
+const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const fechaCorta = (d) => `${DIAS[d.getDay()]} ${d.getDate()} ${MESES[d.getMonth()]}`;
+const conMovimiento = () => window.matchMedia("(prefers-reduced-motion: no-preference)").matches;
+const icono = (nombre) => {
+  const plantilla = document.createElement("template");
+  plantilla.innerHTML = htmlIcono(nombre);
+  return plantilla.content.firstChild;
+};
+
+let modelo = null;
+
+/** Devuelve una función id → <data> (o null si el modelo no tiene esa cifra). */
+function cifrasDe(m, opciones) {
+  const mapa = new Map(m.cifras.map((c) => [c.id, c]));
+  return (id, extra = opciones) => (mapa.has(id) ? elementoCifra(mapa.get(id), extra) : null);
+}
+
+function pintarFrescura(k) {
+  const frescura = $("frescura");
+  frescura.classList.toggle("vivo", Boolean(k.fresco));
+  frescura.replaceChildren(elemento("span", "punto"), elemento("span", "", k.vivo ? `Solarman · ${haceCuanto(k.ahora - k.vivo.instante)}` : "Sin lectura en vivo"));
+
+  // Con una lectura vieja no hace falta aviso: la nota bajo las lecturas ya lo dice.
+  const partes = [];
+  if (!k.vivo && !hayNube()) partes.push("Sin dato en vivo: configura la sincronización y vincula Solarman en los ajustes del asesor.");
+  else if (!k.vivo && k.estadoWorker && !k.estadoWorker.vinculado) partes.push("Sin dato en vivo: falta vincular Solarman (ajustes del asesor).");
+  else if (!k.vivo) partes.push("Sin dato en vivo.");
+  if (k.estadoWorker?.error) partes.push(k.estadoWorker.error);
+  if (k.estadoWorker?.avisoVivo) partes.push(k.estadoWorker.avisoVivo);
+  if (k.falloVivo) partes.push(`Sin conexión con la nube (${k.falloVivo})`);
+  const aviso = $("avisoVivo");
+  aviso.hidden = !partes.length;
+  aviso.textContent = partes.join(" · ");
+  frescura.title = partes.join(" · ");
+}
+
+const NOMBRE_ORIGEN = { vivo: "en vivo", "lectura-antigua": "última lectura", tipico: "típico a esta hora" };
+
+function pintarInstrumento(m, ahora) {
+  modelo = m;
+  explorar(null);
+  const dato = cifrasDe(m);
+  const instrumento = document.querySelector(".instrumento");
+  instrumento.dataset.fase = ["noche", "mañana"].includes(m.estado) ? "noche" : "dia";
+
+  // Rótulo superior
+  const dia = m.dia?.inicio ?? ahora;
+  $("ojoDia").textContent = m.dia?.tipo === "mañana" ? `Mañana · previsión · ${fechaCorta(dia)}` : `Hoy · ${fechaCorta(dia)}`;
+  $("ojoHora").textContent = hhmm(ahora);
+  const escala = $("ojoEscala");
+  if (m.dia?.tipo === "mañana" && m.prevision.traida) escala.replaceChildren("previsión de las ", dato("prevision:traida"));
+  else escala.textContent = m.escala ? (m.escala.origen === "instalacion" ? "escala de tu instalación" : "escala de este día") : "";
+
+  pintarArco($("arco"), m);
+  $("arcoResumen").replaceChildren(...conCifras(m.resumen.plantilla, dato));
+
+  // Extremos y muesca
+  const pie = (texto) => elemento("small", "", texto);
+  const desde = dato("ventana:desde"), hasta = dato("ventana:hasta");
+  $("extDesde").replaceChildren(...(desde ? [desde, pie("inicio de la producción")] : []));
+  $("extHasta").replaceChildren(...(hasta ? [hasta, pie("fin de la producción")] : []));
+  const muesca = $("extMuesca");
+  if (m.muesca) {
+    muesca.replaceChildren(icono("f-cuidado"), m.muesca.origen === "medido" ? "Llena antes de las " : "Llena ≈ ", dato("muesca"), pie(m.muesca.origen));
+  } else {
+    muesca.replaceChildren();
+  }
+
+  // Nota del estado (§4.5)
+  const nota = $("arcoNota");
+  const partes = [];
+  if (m.estado === "sin-sol" && m.dia?.tipo === "mañana") partes.push("Sin previsión para mañana.");
+  else if (m.estado === "sin-sol") {
+    const enlace = elemento("a", "", "Ajustes del asesor");
+    enlace.href = "#formAsesor";
+    enlace.addEventListener("click", abrirAjustesAsesor);
+    partes.push("Sin datos de sol para hoy: pon tu ubicación en ", enlace, ".");
+  } else if (m.estado === "noche" && m.marcador.posicion === "antes") {
+    partes.push("Producción prevista desde las ", dato("ventana:desde"), ".");
+  } else if (m.estado === "noche") {
+    partes.push(...(m.visibles.extremos.includes("total:real") ? ["Hoy: ", dato("total:real"), " medidos."] : ["Hoy: sin datos medidos."]));
+  }
+  nota.hidden = !partes.length;
+  nota.replaceChildren(...partes);
+
+  pintarLecturas(m, dato);
+  pintarRegla(m, dato);
+  pintarLeyenda(m, dato);
+  pintarTablaHoras(m, dato);
+}
+
+// Sustituye cada {id} de una plantilla por su <data>.
+function conCifras(plantilla, dato) {
+  return plantilla.split(/(\{[^}]+\})/).filter(Boolean).map((trozo) => {
+    const id = /^\{([^}]+)\}$/.exec(trozo)?.[1];
+    return id ? dato(id) : trozo;
+  });
+}
+
+function pintarLecturas(m, dato) {
+  const grande = cifrasDe(m, { partir: true });
+  const caja = $("cifrasVivo");
+  const lectura = (clase, simbolo, nombre, notaTexto, valor) => {
+    const fila = elemento("div", `lectura ${clase}`);
+    const dt = elemento("dt");
+    dt.append(icono(simbolo), nombre, elemento("span", "", notaTexto));
+    const dd = elemento("dd");
+    dd.append(valor ?? elemento("span", "sin", "—"));
+    fila.append(dt, dd);
+    return fila;
+  };
+  const nota = $("lecturasNota");
+  nota.hidden = true;
+  if (!m.vivo && m.estado === "cargando") {
+    caja.replaceChildren();
+    return;
+  }
+  if (m.vivo) {
+    const estado = m.vivo.fresco ? "en vivo" : "antigua";
+    caja.replaceChildren(
+      lectura("l-sol", "i-sol", "Sol", estado, grande("vivo:solarW")),
+      lectura("l-casa", "i-casa", "Casa", estado, grande("vivo:casaW")),
+      lectura("l-bat", "i-bateria", "Batería", estado, grande("vivo:soc"))
+    );
+    if (!m.vivo.fresco) {
+      nota.hidden = false;
+      nota.replaceChildren("Lectura de hace ", dato("vivo:antiguedad"), ": demasiado vieja para el semáforo.");
+    }
+  } else {
+    const b = m.bateria;
+    caja.replaceChildren(
+      lectura("l-sol", "i-sol", "Sol", "sin lectura", null),
+      lectura("l-casa", "i-casa", "Casa", "sin lectura", null),
+      lectura("l-bat", "i-bateria", "Batería", b?.soc === null || !b ? "sin dato" : NOMBRE_ORIGEN[b.origenSoc], grande("bateria:soc"))
+    );
+  }
+}
+
+function pintarRegla(m, dato) {
+  const regla = $("regla");
+  const b = m.bateria;
+  const pista = regla.querySelector(".regla-pista");
+  const [relleno, min, rec, fin] = pista.children;
+  regla.dataset.origen = b?.origenSoc ?? "ninguno";
+  regla.style.setProperty("--soc", `${b?.soc ?? 0}%`);
+  min.hidden = !(b?.minimo !== null && b?.minimo !== undefined);
+  rec.hidden = !b?.recomendada;
+  fin.hidden = b?.alAcabarSol === null || b?.alAcabarSol === undefined;
+  relleno.hidden = b?.soc === null || b?.soc === undefined;
+  if (!min.hidden) regla.style.setProperty("--min", `${b.minimo}%`);
+  if (!rec.hidden) regla.style.setProperty("--rec", `${Math.min(b.recomendada.pct, 100)}%`);
+  if (!fin.hidden) regla.style.setProperty("--fin", `${b.alAcabarSol}%`);
+
+  const leyenda = $("reglaLeyenda");
+  // Antes del primer cálculo (o si falla) no se sabe nada de la batería: no se rotula.
+  if (!b) {
+    leyenda.replaceChildren();
+    regla.setAttribute("aria-label", "Batería");
+    return;
+  }
+  const clave = (clase, ...contenido) => {
+    const s = elemento("span");
+    s.append(elemento("i", clase), ...contenido);
+    return s;
+  };
+  const partes = [];
+  const texto = [];
+  if (b.soc === null) {
+    partes.push(clave("k-nivel hueco", "sin dato de batería"));
+    texto.push("sin dato de batería");
+  } else {
+    partes.push(clave(`k-nivel${b.origenSoc === "vivo" ? "" : " estimado"}`, `nivel ${NOMBRE_ORIGEN[b.origenSoc]}`));
+    texto.push(`${dato("bateria:soc")?.textContent ?? ""} ${NOMBRE_ORIGEN[b.origenSoc]}`);
+  }
+  if (!min.hidden) {
+    partes.push(clave("k-min", "reserva ", dato("bateria:minimo")));
+    texto.push(`reserva mínima ${dato("bateria:minimo").textContent}`);
+  }
+  if (!rec.hidden) {
+    partes.push(clave("k-rec", "para esta noche ", dato("bateria:recomendada")));
+    texto.push(`recomendada para esta noche ${dato("bateria:recomendada").textContent}`);
+  }
+  if (!fin.hidden) {
+    partes.push(clave("k-fin", "al acabar el sol ≈ ", dato("bateria:alAcabarSol"), " · simulado"));
+    texto.push(`al acabar el sol ≈ ${dato("bateria:alAcabarSol").textContent}, simulado`);
+  }
+  leyenda.replaceChildren(...partes);
+  regla.setAttribute("aria-label", `Batería: ${texto.join("; ")}`);
+}
+
+const TEXTO_LEYENDA = {
+  "sin-calibrar": "estimación por potencia pico, sin calibrar",
+  tipico: "lo típico a esta hora, sin previsión",
+  "hora-repetida-local": "la hora repetida del cambio no se distingue en el Excel",
+};
+
+function pintarLeyenda(m, dato) {
+  const caja = $("arcoLeyenda");
+  if (!m.ventana) {
+    caja.replaceChildren();
+    return;
+  }
+  const clave = (clase, texto) => {
+    const s = elemento("span");
+    s.append(elemento("i", clase), texto);
+    return s;
+  };
+  const partes = [];
+  const manana = m.dia.tipo === "mañana";
+  if (!manana) partes.push(clave("k-sol", "sol medido"));
+  if (m.leyendas.includes("tipico")) partes.push(clave("k-prev punteado", "sol típico"));
+  else if (m.prevision.estimada) partes.push(clave("k-prev discontinuo", "sol estimado (sin calibrar)"));
+  else partes.push(clave("k-prev", "sol previsto"));
+  if (!manana) partes.push(clave("k-casa", "casa medida"));
+  partes.push(clave("k-casa-t", "casa típica"));
+  if (m.asesor?.mejor && $("arco").querySelector(".arco-mejor")) partes.push(clave("k-mejor", "mejor ventana"));
+  const notas = elemento("span", "leyenda-notas");
+  const frases = [];
+  if (m.escala) frases.push(["1 rayo lleno = ", dato("escala"), m.escala.origen === "instalacion" ? " · escala de tu instalación" : " · escala de este día"]);
+  if (m.prevision.traida) frases.push(["previsión de las ", dato("prevision:traida"), m.prevision.sinConexion ? " (sin conexión)" : ""]);
+  else if (m.prevision.sinConexion) frases.push(["previsión sin conexión"]);
+  for (const l of m.leyendas) if (TEXTO_LEYENDA[l]) frases.push([TEXTO_LEYENDA[l]]);
+  frases.forEach((f, i) => notas.append(...(i ? [" · "] : []), ...f));
+  caja.replaceChildren(...partes, notas);
+}
+
+// «Ver por horas» (§4.6): el sitio donde se comprueba cada cifra, con el mismo marcado.
+const NOMBRE_ESTADO = { completa: "completa", parcial: "parcial", "en-curso": "en curso" };
+const NOMBRE_FUENTE = { worker: "Worker", archivo: "archivo", local: "local" };
+const NOMBRE_CLASE = { medido: "medido", previsto: "previsto", tipico: "típico", simulado: "simulado", vivo: "en vivo", ajuste: "ajuste", calculo: "cálculo" };
+
+function tablaSimple(titulo, cabeceras, filas) {
+  const envoltura = elemento("div", "tabla-envoltorio");
+  const tabla = elemento("table", "tabla tabla-horas");
+  tabla.append(elemento("caption", "", titulo));
+  const cabeza = elemento("tr");
+  for (const c of cabeceras) {
+    const th = elemento("th", "", c);
+    th.scope = "col";
+    cabeza.append(th);
+  }
+  const thead = elemento("thead");
+  thead.append(cabeza);
+  const tbody = elemento("tbody");
+  for (const celdas of filas) {
+    const tr = elemento("tr");
+    celdas.forEach((contenido, i) => {
+      const celda = elemento(i === 0 ? "th" : "td");
+      if (i === 0) celda.scope = "row";
+      if (Array.isArray(contenido)) celda.append(...contenido.filter((x) => x !== null && x !== undefined));
+      else celda.append(contenido ?? "—");
+      tr.append(celda);
+    });
+    tbody.append(tr);
+  }
+  tabla.append(thead, tbody);
+  envoltura.append(tabla);
+  return envoltura;
+}
+
+function pintarTablaHoras(m, dato) {
+  const caja = $("tablaHoras");
+  if (!m.dia) {
+    caja.replaceChildren(elemento("p", "ayuda", m.estado === "error" ? "No he podido calcular." : "Calculando…"));
+    return;
+  }
+  const manana = m.dia.tipo === "mañana";
+  const conTipico = m.franjas.some((f) => f.tipico);
+  const cabeceras = ["Hora"];
+  if (!manana) cabeceras.push("Sol medido (kWh)", "Estado", "Procedencia");
+  cabeceras.push("Sol previsto (kWh)", "Origen de la previsión");
+  if (conTipico) cabeceras.push("Sol típico (kWh)");
+  if (!manana) cabeceras.push("Casa medida (kWh)");
+  cabeceras.push("Casa típica (kWh)");
+  if (!manana) cabeceras.push("SoC fin", "Nota");
+
+  const filas = m.franjas.map((f) => {
+    const ms = f.inicio.getTime();
+    const id = (campo) => dato(`franja:${ms}:${campo}`);
+    const celdas = [id("rotulo")];
+    if (!manana) {
+      celdas.push(id("real"));
+      const cobertura = id("cobertura");
+      celdas.push(f.real ? [NOMBRE_ESTADO[f.real.estado], ...(cobertura ? [" (", cobertura, ")"] : [])] : f.pasada ? "sin dato" : "—");
+      const r = f.real ?? f.casaReal;
+      celdas.push(r ? `${NOMBRE_FUENTE[r.procedencia]}${r.entradas > 1 ? ` (${r.entradas} entradas)` : ""}` : "—");
+    }
+    celdas.push(id("previsto"));
+    celdas.push(f.previsto ? (f.previsto.origen === "prevision" ? `calibrada (${f.previsto.confianza})` : "potencia pico") : "—");
+    if (conTipico) celdas.push(id("tipico"));
+    if (!manana) celdas.push(id("casaReal"));
+    celdas.push(f.casaTipica ? [id("casaTipica"), f.casaTipica.origen === "habito" ? " (hábito)" : " (fondo)"] : "—");
+    if (!manana) {
+      celdas.push(id("socFin"));
+      celdas.push(f.nota ? "puede incluir las dos 02 h: el Excel no las distingue" : "");
+    }
+    return celdas;
+  });
+
+  const bloques = [tablaSimple(manana ? "a) Franjas de mañana" : "a) Franjas de hoy", cabeceras, filas)];
+
+  const pie = elemento("dl", "pie-horas");
+  const fila = (nombre, ...contenido) => {
+    const d = elemento("div");
+    const dd = elemento("dd");
+    dd.append(...contenido.filter((x) => x !== null && x !== undefined));
+    d.append(elemento("dt", "", nombre), dd);
+    pie.append(d);
+  };
+  const t = m.totales;
+  if (m.tabla.pie.includes("total:real")) {
+    fila("Sol medido", dato("total:real"), ` · ${t.horasCompletas} completas, ${t.horasParciales} parciales, ${t.horasEnCurso} en curso, `, dato("total:sinDato"), " sin dato");
+  } else if (m.tabla.pie.includes("total:sinDato")) {
+    fila("Sol medido", "sin datos · ", dato("total:sinDato"), " sin dato");
+  }
+  if (m.tabla.pie.includes("total:previsto")) fila("Sol previsto", dato("total:previsto"));
+  if (m.ventana) fila("Horas con sol", dato("ventana:desde"), " – ", dato("ventana:hasta"));
+  if (m.escala) fila("Escala", dato("escala"), m.escala.origen === "instalacion" ? " · de tu instalación (calibración)" : " · de este día (sin calibración)");
+  if (m.prevision.traida) fila("Previsión", "de las ", dato("prevision:traida"), m.prevision.sinConexion ? " (sin conexión)" : "");
+  bloques.push(pie);
+
+  const filasDe = (pares) =>
+    pares.filter(([id]) => m.cifras.some((c) => c.id === id)).map(([id, nombre]) => {
+      const c = m.cifras.find((x) => x.id === id);
+      return [nombre, dato(id), NOMBRE_CLASE[c.clase], c.procedencia];
+    });
+  const columnas = ["Dato", "Valor", "Clase", "Procedencia"];
+  const bateria = filasDe([
+    ["bateria:soc", "Nivel del indicador"],
+    ["bateria:minimo", "Reserva mínima"],
+    ["bateria:recomendada", "Reserva para esta noche"],
+    ["bateria:alAcabarSol", "Al acabar el sol"],
+    ["muesca", m.muesca?.origen === "medido" ? "Llena antes de las" : "Llena hacia las"],
+  ]);
+  bloques.push(tablaSimple("b) Batería", columnas, bateria.length ? bateria : [["Sin dato de batería", "—", "—", "—"]]));
+  const vivo = filasDe([
+    ["vivo:solarW", "Sol"],
+    ["vivo:casaW", "Casa"],
+    ["vivo:soc", "Batería"],
+    ["vivo:instante", "Lectura de las"],
+    ["vivo:antiguedad", "Antigüedad"],
+  ]);
+  bloques.push(tablaSimple("c) Lectura en vivo", columnas, vivo.length ? vivo : [["Sin lectura en vivo", "—", "—", "—"]]));
+  const asesor = filasDe([
+    ["asesor:costeAhora", "Coste de ponerlo ahora"],
+    ["asesor:mejor:inicio", "Mejor momento, inicio"],
+    ["asesor:mejor:fin", "Mejor momento, fin"],
+    ["asesor:mejor:coste", "Mejor momento, coste"],
+  ]);
+  bloques.push(tablaSimple("d) Asesor", columnas, asesor.length ? asesor : [["Sin decisión", "—", "—", "—"]]));
+  caja.replaceChildren(...bloques);
+}
+
+// --- Exploración del arco con puntero y teclado ---------------------------------------
+
+let franjaActiva = null;
+
+function explorar(f, anunciar = false) {
+  const figura = $("arco");
+  franjaActiva = f;
+  resaltarFranja(figura, f ? f.inicio.getTime() : null);
+  const caja = $("cuencoFranja");
+  if (!f || !modelo) {
+    caja.hidden = true;
+    caja.replaceChildren();
+    return;
+  }
+  const dato = cifrasDe(modelo);
+  const ms = f.inicio.getTime();
+  const id = (campo) => `franja:${ms}:${campo}`;
+  const estado = f.real ? (f.real.estado === "completa" ? "medido" : NOMBRE_ESTADO[f.real.estado]) : f.pasada ? "sin dato" : f.previsto ? "previsto" : "típico";
+  const principal = f.real ? "real" : f.previsto ? "previsto" : f.tipico ? "tipico" : null;
+  const ojo = elemento("p", "cuenco-ojo");
+  ojo.append(dato(id("rotulo")), ` · ${estado}`);
+  const cifra = elemento("p", "franja-cifra");
+  cifra.append(principal ? cifrasDe(modelo, { partir: true })(id(principal)) : elemento("span", "sin", "—"));
+  const detalle = elemento("p", "franja-det");
+  const trozos = [];
+  if (f.real && f.previsto) trozos.push(["previsto ", dato(id("previsto"))]);
+  if (f.casaReal) trozos.push(["casa ", dato(id("casaReal"))]);
+  else if (f.casaTipica) trozos.push(["casa típica ", dato(id("casaTipica"))]);
+  if (!f.real && f.pasada) trozos.push(["sin medida en esta hora"]);
+  trozos.forEach((t, i) => detalle.append(...(i ? [" · "] : []), ...t));
+  caja.replaceChildren(ojo, cifra, detalle);
+  caja.hidden = false;
+  if (anunciar) $("arcoAnuncio").textContent = [ojo.textContent, cifra.textContent, detalle.textContent].join(". ");
+}
+
+function prepararExploracion() {
+  const figura = $("arco");
+  const svg = figura.querySelector("svg");
+  const aCaja = (evento) => {
+    const p = svg.createSVGPoint();
+    p.x = evento.clientX;
+    p.y = evento.clientY;
+    return p.matrixTransform(svg.getScreenCTM().inverse());
+  };
+  const mover = (evento) => {
+    if (!modelo?.ventana) return;
+    const p = aCaja(evento);
+    explorar(franjaEn(modelo, p.x, p.y));
+  };
+  svg.addEventListener("pointermove", mover);
+  svg.addEventListener("pointerdown", mover);
+  svg.addEventListener("pointerleave", () => explorar(null));
+  svg.addEventListener("pointercancel", () => explorar(null));
+  figura.addEventListener("keydown", (evento) => {
+    if (!modelo?.ventana) return;
+    const lista = modelo.franjas.filter((f) => f.angulo !== null);
+    if (evento.key === "ArrowRight" || evento.key === "ArrowLeft") {
+      evento.preventDefault();
+      const paso = evento.key === "ArrowRight" ? 1 : -1;
+      let i = franjaActiva ? lista.indexOf(lista.find((f) => f.inicio.getTime() === franjaActiva.inicio.getTime())) + paso : -1;
+      if (!franjaActiva) {
+        const ahora = contexto?.ahora.getTime() ?? Date.now();
+        i = lista.findIndex((f) => f.inicio.getTime() <= ahora && ahora < f.fin.getTime());
+        if (i < 0) i = paso > 0 ? 0 : lista.length - 1;
+      }
+      explorar(lista[Math.max(0, Math.min(lista.length - 1, i))], true);
+    } else if (evento.key === "Escape" && franjaActiva) {
+      explorar(null);
+      $("arcoAnuncio").textContent = "";
+    }
+  });
+  figura.addEventListener("blur", () => explorar(null));
+}
+
+function abrirAjustesAsesor(evento) {
+  evento.preventDefault();
+  const plegable = $("formAsesor").closest("details");
+  plegable.open = true;
+  plegable.scrollIntoView({ block: "start", behavior: conMovimiento() ? "smooth" : "auto" });
+  $("ajLat").focus({ preventScroll: true });
+}
+
 function pintarDecision() {
   const k = contexto;
   const carga = cargaElegida(k.c);
@@ -255,48 +699,56 @@ function pintarDecision() {
   const figura = forma(decision.estado);
   if (figura) $("formaSemaforo").innerHTML = htmlIcono(figura);
   else $("formaSemaforo").textContent = "?";
-  $("tituloSemaforo").textContent = decision.titulo;
+  const titulo = $("tituloSemaforo");
+  const cambia = titulo.textContent !== decision.titulo;
+  titulo.textContent = decision.titulo;
+  // El veredicto va en una línea: el tamaño se ajusta a su longitud (E1).
+  titulo.style.setProperty("--letras", String(Math.max(decision.titulo.length, 8)));
+  // Cambio de veredicto: fundido del cuenco (§4.7), solo si nadie ha pedido reducir el movimiento.
+  if (cambia && conMovimiento()) $("semaforo").animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: "ease-out" });
   $("semaforo").setAttribute("aria-label", `${ROTULO[decision.estado] || "Sin datos"}: ${decision.titulo}`);
 
-  const cifras = $("cifrasVivo");
-  cifras.replaceChildren();
-  if (k.vivo) {
-    cifras.append(
-      conIcono(elemento("span"), "i-sol", `${fmt(k.vivo.solarW / 1000, 2)} kW`),
-      conIcono(elemento("span"), "i-casa", `${fmt(k.vivo.casaW / 1000, 2)} kW`),
-      conIcono(elemento("span"), "i-bateria", `${Math.round(k.vivo.soc)} %`)
-    );
-  } else {
-    cifras.append(conIcono(elemento("span", "estimado"), "i-bateria", `~${Math.round(k.socPct)} % (estimado)`));
-  }
+  // El arco solo dibuja lo que ya ha calculado el asesor: una simulación más, sin efectos.
+  const pasos = simular(k.slots, bateria, k.socPct).pasos;
+  const reserva = k.solar.length ? reservaRecomendada({ slots: k.slots, bateria, socPct: k.socPct }) : null;
+  const m = modeloArco({
+    ahora: k.ahora, error: null,
+    horasPorFuente: k.horasPorFuente, solar: k.solar,
+    prevision: { traida: k.previsionTraida, sinConexion: Boolean(k.falloPrevision) },
+    calibracion: k.calibracion, habitos: k.habitos,
+    vivo: k.vivo, fresco: Boolean(k.fresco),
+    bateria, reserva, slots: k.slots, pasos, decision,
+    carga: { id: carga.id, nombre: carga.nombre },
+  });
+  pintarInstrumento(m, k.ahora);
+  const dato = cifrasDe(m);
+  $("cuencoOjo").textContent = `${carga.nombre} · ahora`;
 
+  // Solo se envuelve en <data> la subcadena literal que ya escribe el asesor: el texto no cambia.
+  const coste = $("costeAhora");
   if (decision.ahora) {
-    conIcono($("costeAhora"), iconoAparato(carga.id), `${carga.nombre} ahora: ${euros(decision.ahora.coste)}${carga.estimado ? " · consumo estimado" : ""}`);
+    coste.replaceChildren(`${carga.nombre} ahora: `, dato("asesor:costeAhora") ?? euros(decision.ahora.coste), carga.estimado ? " · consumo estimado" : "");
   } else {
-    $("costeAhora").textContent = "";
+    coste.textContent = "";
   }
 
   const proxima = $("proximaVentana");
   if (decision.mejor && decision.mejor !== decision.ahora) {
     proxima.hidden = false;
-    proxima.textContent = `Mejor: ${cuando(decision.mejor.inicio, k.ahora).toLowerCase()} → ${euros(decision.mejor.coste)}`;
+    const texto = cuando(decision.mejor.inicio, k.ahora).toLowerCase();
+    const hora = m.visibles.cuenco.includes("asesor:mejor:inicio") ? dato("asesor:mejor:inicio") : null;
+    const corte = hora ? texto.lastIndexOf(hora.textContent) : -1;
+    proxima.replaceChildren(
+      "Mejor: ",
+      ...(corte >= 0 ? [texto.slice(0, corte), hora, texto.slice(corte + hora.textContent.length)] : [texto]),
+      " → ",
+      dato("asesor:mejor:coste") ?? euros(decision.mejor.coste)
+    );
   } else {
     proxima.hidden = true;
   }
 
-  const frescura = $("frescura");
-  if (k.vivo) {
-    frescura.textContent = `Datos de Solarman ${haceCuanto(k.ahora - k.vivo.instante)}${k.fresco ? "" : " · demasiado viejos para el semáforo"}`;
-  } else if (!hayNube()) {
-    frescura.textContent = "Sin dato en vivo: configura la sincronización y vincula Solarman en los ajustes de abajo.";
-  } else if (k.estadoWorker && !k.estadoWorker.vinculado) {
-    frescura.textContent = "Sin dato en vivo: falta vincular Solarman (ajustes de abajo).";
-  } else {
-    frescura.textContent = "Sin dato en vivo.";
-  }
-  if (k.estadoWorker?.error) frescura.textContent += ` · ${k.estadoWorker.error}`;
-  if (k.estadoWorker?.avisoVivo) frescura.textContent += ` · ${k.estadoWorker.avisoVivo}`;
-  if (k.falloVivo) frescura.textContent += ` · Sin conexión con la nube (${k.falloVivo})`;
+  pintarFrescura(k);
 
   // ¿Por que?
   const lista = $("razones");
@@ -352,6 +804,7 @@ function pintarLinea(carga) {
       return celda;
     })
   );
+  pintarTramos(linea);
 
   // Sin prevision solar la reserva saldria siempre al 100 %: mejor no decir nada.
   const reserva = k.solar.length ? reservaRecomendada({ slots: k.slots, bateria: k.c.bateria, socPct: k.socPct }) : null;
@@ -379,15 +832,38 @@ function pintarLinea(carga) {
   }
 }
 
+// Resumen de la línea de 24 h por tramos seguidos del mismo estado (solo agrupa, no calcula).
+const NOMBRE_TRAMO = { verde: "buen momento", amarillo: "cuidado", rojo: "evita" };
+function pintarTramos(linea) {
+  const tramos = [];
+  for (const h of linea) {
+    const ultimo = tramos.at(-1);
+    if (ultimo && ultimo.estado === h.estado) ultimo.hasta = new Date(h.inicio.getTime() + HORA);
+    else tramos.push({ estado: h.estado, desde: h.inicio, hasta: new Date(h.inicio.getTime() + HORA) });
+  }
+  const dos = (d) => String(d.getHours()).padStart(2, "0");
+  $("resumenLinea").replaceChildren(
+    ...tramos.slice(0, 4).map((t) => {
+      const s = elemento("span", t.estado);
+      conIcono(s, forma(t.estado), `${NOMBRE_TRAMO[t.estado]} `);
+      s.append(elemento("b", "", tramos.length === 1 ? "las próximas horas" : `${dos(t.desde)}–${dos(t.hasta)} h`));
+      return s;
+    })
+  );
+}
+
 function pintarAparatos(elegida) {
   const caja = $("aparatos");
+  const conFoco = caja.contains(document.activeElement);
   const todos = [CARGA_REFERENCIA, ...combinarAparatos(contexto.c.aparatos)];
   caja.replaceChildren(
     ...todos.map((a) => {
       const boton = elemento("button", "chip");
       boton.type = "button";
+      boton.dataset.id = a.id;
       boton.setAttribute("role", "radio");
       boton.setAttribute("aria-checked", String(a.id === elegida.id));
+      boton.tabIndex = a.id === elegida.id ? 0 : -1;
       boton.append(conIcono(elemento("span"), iconoAparato(a.id)), elemento("span", "", a.nombre));
       boton.addEventListener("click", () => {
         guardarConfig({ aparato: a.id });
@@ -397,6 +873,17 @@ function pintarAparatos(elegida) {
       return boton;
     })
   );
+  if (conFoco) caja.querySelector('[aria-checked="true"]')?.focus();
+}
+
+// Radiogroup: flechas para cambiar de aparato (§6.4).
+function moverAparato(evento) {
+  const paso = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[evento.key];
+  if (!paso) return;
+  evento.preventDefault();
+  const botones = [...$("aparatos").querySelectorAll('[role="radio"]')];
+  const actual = botones.findIndex((b) => b.getAttribute("aria-checked") === "true");
+  botones[(actual + paso + botones.length) % botones.length]?.click();
 }
 
 // --- Ajustes -----------------------------------------------------------------
@@ -529,14 +1016,24 @@ export function pintarAhora() {
   pintando ??= calcular()
     .then(pintarDecision)
     .catch((error) => {
+      pintarInstrumento(modeloArco({ ahora: new Date(), error }), new Date());
       $("tituloSemaforo").textContent = "No he podido calcular";
-      $("frescura").textContent = error.message;
+      $("frescura").replaceChildren(elemento("span", "punto"), elemento("span", "", "Sin datos"));
+      $("avisoVivo").hidden = false;
+      $("avisoVivo").textContent = error.message;
     })
     .finally(() => (pintando = null));
   return pintando;
 }
 
 export function iniciarAhora({ visible }) {
+  pintarInstrumento(modeloArco(null), new Date());
+  prepararExploracion();
+  $("aparatos").addEventListener("keydown", moverAparato);
+  // Si se pide reducir el movimiento a mitad de sesión, lo que esté en marcha acaba ya (§6.2).
+  window.matchMedia("(prefers-reduced-motion: reduce)").addEventListener?.("change", (cambio) => {
+    if (cambio.matches) for (const animacion of document.getAnimations?.() ?? []) animacion.finish();
+  });
   pintarAjustes();
   $("formAsesor").addEventListener("change", () => {
     guardarAjustes();

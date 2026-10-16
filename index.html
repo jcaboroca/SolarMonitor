@@ -54,128 +54,162 @@
 
 <header class="cabecera">
   <div class="contenedor cabecera-fila">
-    <div class="crece">
-      <h1>Solar Monitor</h1>
-      <p class="sub">Cuándo gastar tu energía y si la factura cuadra con lo que mides</p>
-    </div>
+    <h1 class="marca"><svg class="marca-glifo" viewBox="0 0 24 14" aria-hidden="true" focusable="false"><path d="M2 13a10 10 0 0 1 20 0"/><path d="M0 13h24"/><circle cx="17" cy="5.6" r="2"/></svg>Solar Monitor</h1>
     <button class="btn cuadrado" type="button" id="abrirAjustes" aria-label="Ajustes" title="Ajustes"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-ajustes"></use></svg></button>
+    <nav class="pestanas" aria-label="Secciones">
+      <div class="lista-pestanas" role="tablist">
+        <button role="tab" type="button" id="pestana-ahora" data-panel="ahora" aria-controls="panel-ahora" aria-selected="true">
+          <span class="num" aria-hidden="true">01</span><span class="icono" aria-hidden="true"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-ahora"></use></svg></span><span class="rotulo">Ahora</span>
+        </button>
+        <button role="tab" type="button" id="pestana-datos" data-panel="datos" aria-controls="panel-datos" aria-selected="false" tabindex="-1">
+          <span class="num" aria-hidden="true">02</span><span class="icono" aria-hidden="true"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-datos"></use></svg></span><span class="rotulo">Datos</span>
+        </button>
+        <button role="tab" type="button" id="pestana-cuadra" data-panel="cuadra" aria-controls="panel-cuadra" aria-selected="false" tabindex="-1">
+          <span class="num" aria-hidden="true">03</span><span class="icono" aria-hidden="true"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-cuadra"></use></svg></span><span class="rotulo">¿Cuadra?</span>
+        </button>
+        <button role="tab" type="button" id="pestana-meses" data-panel="meses" aria-controls="panel-meses" aria-selected="false" tabindex="-1">
+          <span class="num" aria-hidden="true">04</span><span class="icono" aria-hidden="true"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-meses"></use></svg></span><span class="rotulo">Mes a mes</span>
+        </button>
+        <button role="tab" type="button" id="pestana-dia" data-panel="dia" aria-controls="panel-dia" aria-selected="false" tabindex="-1">
+          <span class="num" aria-hidden="true">05</span><span class="icono" aria-hidden="true"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-dia"></use></svg></span><span class="rotulo">Día a día</span>
+        </button>
+      </div>
+    </nav>
+    <p class="frescura" id="frescura"></p>
   </div>
 </header>
-
-<nav class="pestanas" aria-label="Secciones">
-  <div class="contenedor lista-pestanas" role="tablist">
-    <button role="tab" type="button" id="pestana-ahora" data-panel="ahora" aria-controls="panel-ahora" aria-selected="true">
-      <span class="icono" aria-hidden="true"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-ahora"></use></svg></span><span class="rotulo">Ahora</span>
-    </button>
-    <button role="tab" type="button" id="pestana-datos" data-panel="datos" aria-controls="panel-datos" aria-selected="false" tabindex="-1">
-      <span class="icono" aria-hidden="true"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-datos"></use></svg></span><span class="rotulo">Datos</span>
-    </button>
-    <button role="tab" type="button" id="pestana-cuadra" data-panel="cuadra" aria-controls="panel-cuadra" aria-selected="false" tabindex="-1">
-      <span class="icono" aria-hidden="true"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-cuadra"></use></svg></span><span class="rotulo">¿Cuadra?</span>
-    </button>
-    <button role="tab" type="button" id="pestana-meses" data-panel="meses" aria-controls="panel-meses" aria-selected="false" tabindex="-1">
-      <span class="icono" aria-hidden="true"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-meses"></use></svg></span><span class="rotulo">Mes a mes</span>
-    </button>
-    <button role="tab" type="button" id="pestana-dia" data-panel="dia" aria-controls="panel-dia" aria-selected="false" tabindex="-1">
-      <span class="icono" aria-hidden="true"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-dia"></use></svg></span><span class="rotulo">Día a día</span>
-    </button>
-  </div>
-</nav>
 
 <main class="contenedor">
 
   <p id="aviso" class="aviso" hidden role="alert"></p>
 
   <!-- 0 · Ahora -->
-  <div class="panel" id="panel-ahora" role="tabpanel" aria-labelledby="pestana-ahora" tabindex="0">
+  <div class="panel panel-ahora" id="panel-ahora" role="tabpanel" aria-labelledby="pestana-ahora" tabindex="0">
+   <div class="ahora">
 
-    <section class="semaforo" id="semaforo" role="status" aria-live="polite">
-      <div class="luz" id="luzSemaforo" data-estado=""><span id="formaSemaforo" aria-hidden="true">…</span></div>
-      <h2 id="tituloSemaforo">Calculando…</h2>
-      <p class="cifras" id="cifrasVivo"></p>
-      <p class="coste" id="costeAhora"></p>
-      <p class="proxima" id="proximaVentana" hidden></p>
-      <p class="frescura" id="frescura"></p>
-    </section>
+    <section class="instrumento" aria-label="Instrumento solar" data-fase="dia">
+      <p class="ojo ojo-instr"><span id="ojoDia"></span><span class="ojo-hora" id="ojoHora"></span><span class="ojo-der" id="ojoEscala"></span></p>
 
-    <div class="aparatos" id="aparatos" role="radiogroup" aria-label="¿Qué quieres hacer?"></div>
-
-    <details class="tarjeta porque">
-      <summary>¿Por qué?</summary>
-      <ul class="razones" id="razones"></ul>
-      <p class="ayuda" id="confianza"></p>
-    </details>
-
-    <section class="tarjeta" id="ventanas">
-      <h2 id="tituloVentanas">Mejor momento</h2>
-      <ol class="ventanas" id="listaVentanas"></ol>
-    </section>
-
-    <section class="tarjeta" id="reserva" hidden>
-      <h2>Reserva recomendada esta noche: <span id="pctReserva"></span></h2>
-      <p class="ayuda" id="textoReserva"></p>
-      <p class="aviso-reserva" id="avisoReserva" hidden><svg class="i" aria-hidden="true" focusable="false"><use href="#i-bateria"></use></svg>Guarda batería: evita consumos grandes hasta que vuelva el sol.</p>
-    </section>
-
-    <section class="tarjeta">
-      <h2>Próximas 24 horas</h2>
-      <div class="linea" id="linea" role="list"></div>
-      <p class="ayuda leyenda leyenda-formas"><span class="verde"><svg class="i" aria-hidden="true" focusable="false"><use href="#f-bien"></use></svg>buen momento</span> <span class="amarillo"><svg class="i" aria-hidden="true" focusable="false"><use href="#f-cuidado"></use></svg>cuidado</span> <span class="rojo"><svg class="i" aria-hidden="true" focusable="false"><use href="#f-evita"></use></svg>evita</span></p>
-    </section>
-
-    <section class="tarjeta" id="aprendiendo" hidden>
-      <h2>Aprendiendo</h2>
-      <p class="ayuda">Estoy aprendiendo tu producción solar, tu consumo y tu batería. Mientras tanto, las previsiones valen menos.</p>
-      <p class="ayuda" id="textoAprendiendo"></p>
-    </section>
-
-    <section class="tarjeta plegable">
-      <details>
-        <summary>Ajustes del asesor</summary>
-        <form id="formAsesor" class="campos">
-          <label>Latitud <input type="text" inputmode="decimal" id="ajLat" placeholder="40.42"></label>
-          <label>Longitud <input type="text" inputmode="decimal" id="ajLon" placeholder="-3.70"></label>
-          <p class="ayuda">Solo se usa para pedir la previsión a Open-Meteo, redondeada a dos decimales (≈ 1 km).
-            <button class="btn" type="button" id="usarUbicacion">Usar mi ubicación</button> <span id="estadoUbicacion"></span></p>
-          <label>Potencia pico de las placas (kWp, opcional) <input type="number" step="0.1" min="0" id="ajKwp"></label>
-          <label>Potencia contratada (kW) <input type="number" step="0.1" min="0" id="ajPotencia"></label>
-          <label>Batería útil (kWh) <input type="number" step="0.1" min="0" id="ajCapacidad"></label>
-          <label>Reserva mínima del inversor (%) <input type="number" step="1" min="0" max="100" id="ajSocMinimo"></label>
-          <label>Rendimiento de ida y vuelta (%, estimado) <input type="number" step="1" min="50" max="100" id="ajRendimiento"></label>
-          <label>Energía punta P1 (€/kWh) <input type="number" step="0.0001" min="0" id="ajP1"></label>
-          <label>Energía llano P2 (€/kWh) <input type="number" step="0.0001" min="0" id="ajP2"></label>
-          <label>Energía valle P3 (€/kWh) <input type="number" step="0.0001" min="0" id="ajP3"></label>
-          <label>Excedentes (€/kWh) <input type="number" step="0.0001" min="0" id="ajExcedentes"></label>
-          <label class="check"><input type="checkbox" id="ajIndexada"> Tarifa indexada: precio de cada hora según el mercado (REE)</label>
-          <label>Suplemento sobre el mercado (€/kWh) <input type="number" step="0.001" min="0" id="ajSuplemento"></label>
-          <p class="ayuda">Precios sin impuestos; el asesor suma el impuesto eléctrico y el IVA. Con la tarifa indexada,
-            los precios por periodo solo se usan para las horas que REE aún no ha publicado.</p>
-          <div class="tabla-envoltorio ancho">
-            <table class="tabla" id="tablaAparatos">
-              <thead><tr><th>Aparato</th><th class="numero">kWh por uso</th><th class="numero">Duración (h)</th><th class="numero">Pico (W)</th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-          <div class="tabla-envoltorio ancho">
-            <h3>Siempre enchufados (medido con la casa vacía, agosto)</h3>
-            <table class="tabla" id="tablaFijos">
-              <thead><tr><th>Aparato</th><th>Qué se ve en la curva</th><th class="numero">Al día</th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </form>
-        <h3>Dato en vivo de Solarman</h3>
-        <p class="ayuda">
-          Entra en el portal de Solarman, abre las herramientas de desarrollador → Almacenamiento → Cookies y copia el valor
-          que empieza por <b>eyJ</b> y caduca dentro de unos seis meses. Va solo a tu Worker, que renueva la sesión por su cuenta.
-        </p>
-        <div class="opciones">
-          <label>Token <input type="password" id="tokenSolarman" autocomplete="off" spellcheck="false"></label>
-          <button class="btn primario" type="button" id="vincularSolarman">Vincular</button>
-          <span class="estado" id="estadoVincular"></span>
+      <figure class="arco" id="arco" tabindex="0" aria-describedby="ayudaArco" data-estado="cargando">
+        <svg role="img" aria-labelledby="arcoResumen" viewBox="0 -22 400 242"></svg>
+        <div class="arco-rotulos" aria-hidden="true"></div>
+        <div class="cuenco" id="cuenco">
+          <section class="semaforo" id="semaforo" role="status" aria-live="polite">
+            <div class="luz" id="luzSemaforo" data-estado=""><span id="formaSemaforo" aria-hidden="true"></span></div>
+            <p class="cuenco-ojo" id="cuencoOjo"></p>
+            <h2 id="tituloSemaforo">Calculando…</h2>
+            <p class="coste" id="costeAhora"></p>
+            <p class="proxima" id="proximaVentana" hidden></p>
+          </section>
+          <div class="cuenco-franja" id="cuencoFranja" hidden></div>
         </div>
-      </details>
+        <figcaption class="oculto" id="arcoResumen">Calculando…</figcaption>
+        <p class="oculto" id="ayudaArco">Usa las flechas izquierda y derecha para recorrer las horas y Escape para volver.</p>
+        <p class="oculto" id="arcoAnuncio" aria-live="polite"></p>
+      </figure>
+
+      <div class="suelo">
+        <div class="extremos"><p id="extDesde"></p><p class="ext-muesca" id="extMuesca"></p><p class="ext-hasta" id="extHasta"></p></div>
+        <p class="arco-nota" id="arcoNota" hidden></p>
+        <dl class="lecturas" id="cifrasVivo"></dl>
+        <p class="lecturas-nota" id="lecturasNota" hidden></p>
+        <div class="regla" id="regla" role="img" aria-label="Batería">
+          <div class="regla-pista"><i class="r-relleno"></i><i class="r-min"></i><i class="r-rec"></i><i class="r-fin"></i></div>
+          <div class="regla-escala" aria-hidden="true"><span>0</span><span>25</span><span>50</span><span>75</span><span>100 %</span></div>
+        </div>
+        <p class="regla-leyenda" id="reglaLeyenda"></p>
+
+        <section class="reserva" id="reserva" hidden>
+          <h3>Reserva recomendada esta noche: <span id="pctReserva"></span></h3>
+          <p class="ayuda" id="textoReserva"></p>
+          <p class="aviso-reserva" id="avisoReserva" hidden><svg class="i" aria-hidden="true" focusable="false"><use href="#i-bateria"></use></svg>Guarda batería: evita consumos grandes hasta que vuelva el sol.</p>
+        </section>
+
+        <p class="aviso-linea" id="avisoVivo" hidden></p>
+        <div class="aviso-linea" id="aprendiendo" hidden>
+          <p>Estoy aprendiendo tu producción solar, tu consumo y tu batería. Mientras tanto, las previsiones valen menos.</p>
+          <p id="textoAprendiendo"></p>
+        </div>
+
+        <p class="arco-leyenda" id="arcoLeyenda"></p>
+        <details class="por-horas" id="porHoras">
+          <summary>Ver por horas</summary>
+          <div id="tablaHoras"></div>
+        </details>
+      </div>
     </section>
+
+    <section class="decision" aria-label="Qué hacer ahora">
+      <h2 class="seccion"><span class="num">01</span>¿Qué vas a poner?</h2>
+      <div class="aparatos" id="aparatos" role="radiogroup" aria-label="¿Qué quieres hacer?"></div>
+
+      <section id="ventanas">
+        <h2 class="seccion"><span class="num">02</span><span id="tituloVentanas">Mejor momento</span></h2>
+        <ol class="ventanas" id="listaVentanas"></ol>
+      </section>
+
+      <section>
+        <h2 class="seccion"><span class="num">03</span>Próximas 24 horas</h2>
+        <p class="cinta-resumen" id="resumenLinea"></p>
+        <div class="linea" id="linea" role="list"></div>
+      </section>
+
+      <section class="porque">
+        <h2 class="seccion"><span class="num">04</span>Por qué</h2>
+        <ul class="razones" id="razones"></ul>
+        <p class="ayuda" id="confianza"></p>
+      </section>
+
+      <section class="plegable fila-ajustes">
+        <details>
+          <summary>Ajustes del asesor</summary>
+          <form id="formAsesor" class="campos">
+            <label>Latitud <input type="text" inputmode="decimal" id="ajLat" placeholder="40.42"></label>
+            <label>Longitud <input type="text" inputmode="decimal" id="ajLon" placeholder="-3.70"></label>
+            <p class="ayuda">Solo se usa para pedir la previsión a Open-Meteo, redondeada a dos decimales (≈ 1 km).
+              <button class="btn" type="button" id="usarUbicacion">Usar mi ubicación</button> <span id="estadoUbicacion"></span></p>
+            <label>Potencia pico de las placas (kWp, opcional) <input type="number" step="0.1" min="0" id="ajKwp"></label>
+            <label>Potencia contratada (kW) <input type="number" step="0.1" min="0" id="ajPotencia"></label>
+            <label>Batería útil (kWh) <input type="number" step="0.1" min="0" id="ajCapacidad"></label>
+            <label>Reserva mínima del inversor (%) <input type="number" step="1" min="0" max="100" id="ajSocMinimo"></label>
+            <label>Rendimiento de ida y vuelta (%, estimado) <input type="number" step="1" min="50" max="100" id="ajRendimiento"></label>
+            <label>Energía punta P1 (€/kWh) <input type="number" step="0.0001" min="0" id="ajP1"></label>
+            <label>Energía llano P2 (€/kWh) <input type="number" step="0.0001" min="0" id="ajP2"></label>
+            <label>Energía valle P3 (€/kWh) <input type="number" step="0.0001" min="0" id="ajP3"></label>
+            <label>Excedentes (€/kWh) <input type="number" step="0.0001" min="0" id="ajExcedentes"></label>
+            <label class="check"><input type="checkbox" id="ajIndexada"> Tarifa indexada: precio de cada hora según el mercado (REE)</label>
+            <label>Suplemento sobre el mercado (€/kWh) <input type="number" step="0.001" min="0" id="ajSuplemento"></label>
+            <p class="ayuda">Precios sin impuestos; el asesor suma el impuesto eléctrico y el IVA. Con la tarifa indexada,
+              los precios por periodo solo se usan para las horas que REE aún no ha publicado.</p>
+            <div class="tabla-envoltorio ancho">
+              <table class="tabla" id="tablaAparatos">
+                <thead><tr><th>Aparato</th><th class="numero">kWh por uso</th><th class="numero">Duración (h)</th><th class="numero">Pico (W)</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div class="tabla-envoltorio ancho">
+              <h3>Siempre enchufados (medido con la casa vacía, agosto)</h3>
+              <table class="tabla" id="tablaFijos">
+                <thead><tr><th>Aparato</th><th>Qué se ve en la curva</th><th class="numero">Al día</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </form>
+          <h3>Dato en vivo de Solarman</h3>
+          <p class="ayuda">
+            Entra en el portal de Solarman, abre las herramientas de desarrollador → Almacenamiento → Cookies y copia el valor
+            que empieza por <b>eyJ</b> y caduca dentro de unos seis meses. Va solo a tu Worker, que renueva la sesión por su cuenta.
+          </p>
+          <div class="opciones">
+            <label>Token <input type="password" id="tokenSolarman" autocomplete="off" spellcheck="false"></label>
+            <button class="btn primario" type="button" id="vincularSolarman">Vincular</button>
+            <span class="estado" id="estadoVincular"></span>
+          </div>
+        </details>
+      </section>
+    </section>
+
+   </div>
   </div>
 
   <!-- 1 · Datos -->
