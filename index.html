@@ -4,16 +4,53 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
-<meta name="theme-color" content="#0d1117">
+<meta name="theme-color" content="#14110E">
 <title>Solar Monitor</title>
 <link rel="icon" href="assets/icono.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Solar">
+<link rel="preload" href="vendor/fuentes/IBM%20Plex%20Sans%20Var-Roman-Latin1.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="vendor/fuentes/IBM%20Plex%20Mono%20Var-Roman-Latin1.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+<svg class="sprite" xmlns="http://www.w3.org/2000/svg" hidden>
+<!-- Iconos de Phosphor Icons — Copyright (c) 2023 Phosphor Icons — Licencia MIT — phosphor-icons/core@2b75f3ad12b420c9504ef05df8d2564a28f8500e — texto íntegro en vendor/phosphor/LICENSE. Los símbolos con data-origen="propio" son de este proyecto. -->
+<symbol id="i-ahora" data-origen="propio" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17a9 9 0 0 1 18 0"/><path d="M12 17l4.5-5.5"/><path d="M3 20h18"/></symbol>
+<symbol id="i-dia" data-origen="propio" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19c2.5-8 5.5-12 9-12s6.5 4 9 12"/><path d="M14 4v17"/></symbol>
+<symbol id="f-bien" data-origen="propio" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="7"/></symbol>
+<symbol id="f-cuidado" data-origen="propio" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l8.5 15h-17z"/></symbol>
+<symbol id="f-evita" data-origen="propio" viewBox="0 0 24 24" fill="currentColor"><path d="M5.5 5.5h13v13h-13z"/></symbol>
+<symbol id="i-datos" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M208,34H48A14,14,0,0,0,34,48V208a14,14,0,0,0,14,14H208a14,14,0,0,0,14-14V48A14,14,0,0,0,208,34ZM48,46H208a2,2,0,0,1,2,2V154H179.31a13.94,13.94,0,0,0-9.9,4.1L150.1,177.41a2,2,0,0,1-1.41.59H107.31a2,2,0,0,1-1.41-.58L86.59,158.1a13.94,13.94,0,0,0-9.9-4.1H46V48A2,2,0,0,1,48,46ZM208,210H48a2,2,0,0,1-2-2V166H76.69a2,2,0,0,1,1.41.58L97.41,185.9a13.94,13.94,0,0,0,9.9,4.1h41.38a13.94,13.94,0,0,0,9.9-4.1l19.31-19.31a2,2,0,0,1,1.41-.59H210v42A2,2,0,0,1,208,210ZM91.76,124.24a6,6,0,0,1,8.48-8.48L122,137.51V72a6,6,0,0,1,12,0v65.51l21.76-21.75a6,6,0,0,1,8.48,8.48l-32,32a6,6,0,0,1-8.48,0Z"/></symbol>
+<symbol id="i-cuadra" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M237.57,133.77l-32-80h0a6,6,0,0,0-6.86-3.63L134,64.52V40a6,6,0,0,0-12,0V67.19l-67.3,15a6,6,0,0,0-4.27,3.63h0v0l-32,80A6.1,6.1,0,0,0,18,168c0,21.86,23.31,30,38,30s38-8.14,38-30a6.1,6.1,0,0,0-.43-2.23L64.19,92.33,122,79.48V210H104a6,6,0,0,0,0,12h48a6,6,0,0,0,0-12H134V76.81l56.21-12.49-27.78,69.45A6.1,6.1,0,0,0,162,136c0,21.86,23.31,30,38,30s38-8.14,38-30A6.1,6.1,0,0,0,237.57,133.77ZM56,186a36.89,36.89,0,0,1-17.48-4.56c-5.37-3.13-8.15-7.18-8.49-12.37l26-64.91,26,64.91C81.06,182.85,62.58,186,56,186Zm144-32a36.89,36.89,0,0,1-17.48-4.56c-5.37-3.13-8.15-7.18-8.49-12.37l26-64.91,26,64.91C225.06,150.85,206.58,154,200,154Z"/></symbol>
+<symbol id="i-meses" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M208,34H182V24a6,6,0,0,0-12,0V34H86V24a6,6,0,0,0-12,0V34H48A14,14,0,0,0,34,48V208a14,14,0,0,0,14,14H208a14,14,0,0,0,14-14V48A14,14,0,0,0,208,34ZM48,46H74V56a6,6,0,0,0,12,0V46h84V56a6,6,0,0,0,12,0V46h26a2,2,0,0,1,2,2V82H46V48A2,2,0,0,1,48,46ZM208,210H48a2,2,0,0,1-2-2V94H210V208A2,2,0,0,1,208,210Z"/></symbol>
+<symbol id="i-ajustes" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M40,86H74.6a30,30,0,0,0,58.8,0H216a6,6,0,0,0,0-12H133.4a30,30,0,0,0-58.8,0H40a6,6,0,0,0,0,12Zm64-24A18,18,0,1,1,86,80,18,18,0,0,1,104,62ZM216,170H197.4a30,30,0,0,0-58.8,0H40a6,6,0,0,0,0,12h98.6a30,30,0,0,0,58.8,0H216a6,6,0,0,0,0-12Zm-48,24a18,18,0,1,1,18-18A18,18,0,0,1,168,194Z"/></symbol>
+<symbol id="i-cerrar" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M204.24,195.76a6,6,0,1,1-8.48,8.48L128,136.49,60.24,204.24a6,6,0,0,1-8.48-8.48L119.51,128,51.76,60.24a6,6,0,0,1,8.48-8.48L128,119.51l67.76-67.75a6,6,0,0,1,8.48,8.48L136.49,128Z"/></symbol>
+<symbol id="i-sol" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M122,40V16a6,6,0,0,1,12,0V40a6,6,0,0,1-12,0Zm68,88a62,62,0,1,1-62-62A62.07,62.07,0,0,1,190,128Zm-12,0a50,50,0,1,0-50,50A50.06,50.06,0,0,0,178,128ZM59.76,68.24a6,6,0,1,0,8.48-8.48l-16-16a6,6,0,0,0-8.48,8.48Zm0,119.52-16,16a6,6,0,1,0,8.48,8.48l16-16a6,6,0,1,0-8.48-8.48ZM192,70a6,6,0,0,0,4.24-1.76l16-16a6,6,0,0,0-8.48-8.48l-16,16A6,6,0,0,0,192,70Zm4.24,117.76a6,6,0,0,0-8.48,8.48l16,16a6,6,0,0,0,8.48-8.48ZM46,128a6,6,0,0,0-6-6H16a6,6,0,0,0,0,12H40A6,6,0,0,0,46,128Zm82,82a6,6,0,0,0-6,6v24a6,6,0,0,0,12,0V216A6,6,0,0,0,128,210Zm112-88H216a6,6,0,0,0,0,12h24a6,6,0,0,0,0-12Z"/></symbol>
+<symbol id="i-casa" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M217.9,110.1l-80-80a14,14,0,0,0-19.8,0l-80,80A13.92,13.92,0,0,0,34,120v96a6,6,0,0,0,6,6h64a6,6,0,0,0,6-6V158h36v58a6,6,0,0,0,6,6h64a6,6,0,0,0,6-6V120A13.92,13.92,0,0,0,217.9,110.1ZM210,210H158V152a6,6,0,0,0-6-6H104a6,6,0,0,0-6,6v58H46V120a2,2,0,0,1,.58-1.42l80-80a2,2,0,0,1,2.84,0l80,80A2,2,0,0,1,210,120Z"/></symbol>
+<symbol id="i-bateria" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M200,58H32A22,22,0,0,0,10,80v96a22,22,0,0,0,22,22H200a22,22,0,0,0,22-22V80A22,22,0,0,0,200,58Zm10,118a10,10,0,0,1-10,10H32a10,10,0,0,1-10-10V80A10,10,0,0,1,32,70H200a10,10,0,0,1,10,10ZM142,96v64a6,6,0,0,1-12,0V96a6,6,0,0,1,12,0Zm-40,0v64a6,6,0,0,1-12,0V96a6,6,0,0,1,12,0ZM62,96v64a6,6,0,0,1-12,0V96a6,6,0,0,1,12,0Zm192,0v64a6,6,0,0,1-12,0V96a6,6,0,0,1,12,0Z"/></symbol>
+<symbol id="i-red" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M236.24,67.76a6,6,0,0,0-8.48,0L192,103.51,152.49,64l35.75-35.76a6,6,0,0,0-8.48-8.48L144,55.51,116.24,27.76a6,6,0,1,0-8.48,8.48L115.51,44,61.13,98.38a38,38,0,0,0,0,53.75l17.13,17.12-50.5,50.51a6,6,0,1,0,8.48,8.48l50.51-50.5,17.13,17.13a38,38,0,0,0,53.74,0L212,140.49l7.76,7.75a6,6,0,0,0,8.48-8.48L200.49,112l35.75-35.76A6,6,0,0,0,236.24,67.76ZM149.13,186.38a26,26,0,0,1-36.77,0L69.62,143.64a26,26,0,0,1,0-36.77L124,52.49,203.51,132Z"/></symbol>
+<symbol id="i-contador" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M205.65,74.08A109.26,109.26,0,0,0,128,42h-.39C67.17,42.21,18,92.06,18,153.13V176a14,14,0,0,0,14,14H224a14,14,0,0,0,14-14V152A109.3,109.3,0,0,0,205.65,74.08ZM226,176a2,2,0,0,1-2,2H115.78l57.07-78.47a6,6,0,0,0-9.7-7.06L100.94,178H32a2,2,0,0,1-2-2V153.13A102.36,102.36,0,0,1,30.62,142H56a6,6,0,0,0,0-12H32.71C42.6,88.4,78.53,56.86,122,54.19V80a6,6,0,0,0,12,0V54.19A98.05,98.05,0,0,1,223.53,130H200a6,6,0,0,0,0,12h25.5c.33,3.3.5,6.64.5,10Z"/></symbol>
+<symbol id="i-documento" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M212.24,83.76l-56-56A6,6,0,0,0,152,26H56A14,14,0,0,0,42,40V216a14,14,0,0,0,14,14H200a14,14,0,0,0,14-14V88A6,6,0,0,0,212.24,83.76ZM158,46.48,193.52,82H158ZM200,218H56a2,2,0,0,1-2-2V40a2,2,0,0,1,2-2h90V88a6,6,0,0,0,6,6h50V216A2,2,0,0,1,200,218Zm-34-82a6,6,0,0,1-6,6H96a6,6,0,0,1,0-12h64A6,6,0,0,1,166,136Zm0,32a6,6,0,0,1-6,6H96a6,6,0,0,1,0-12h64A6,6,0,0,1,166,168Z"/></symbol>
+<symbol id="i-euro" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M188.47,193.66a6,6,0,0,1-.47,8.48A78,78,0,0,1,58.25,150H40a6,6,0,0,1,0-12H58V118H40a6,6,0,0,1,0-12H58.25A78,78,0,0,1,188,53.86a6,6,0,0,1-8,9A66,66,0,0,0,70.29,106H136a6,6,0,0,1,0,12H70v20h50a6,6,0,0,1,0,12H70.29A66,66,0,0,0,180,193.2,6,6,0,0,1,188.47,193.66Z"/></symbol>
+<symbol id="i-reloj" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M128,26A102,102,0,1,0,230,128,102.12,102.12,0,0,0,128,26Zm0,192a90,90,0,1,1,90-90A90.1,90.1,0,0,1,128,218Zm62-90a6,6,0,0,1-6,6H128a6,6,0,0,1-6-6V72a6,6,0,0,1,12,0v50h50A6,6,0,0,1,190,128Z"/></symbol>
+<symbol id="i-prevision" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M164,74a74.15,74.15,0,0,0-21.18,3.09,54.08,54.08,0,0,0-11.14-13.61l10.52-15a6,6,0,1,0-9.83-6.89l-10.52,15A53.9,53.9,0,0,0,96,50c-1.15,0-2.28,0-3.41.12L89.4,32.05a6,6,0,1,0-11.81,2.09L80.77,52.2A54,54,0,0,0,55.52,68.32L40.47,57.78a6,6,0,0,0-6.89,9.83l15,10.52A53.7,53.7,0,0,0,42,104c0,1.13,0,2.26.12,3.39l-18.07,3.18a6,6,0,0,0,1,11.91,6.38,6.38,0,0,0,1.05-.09L44.2,119.2a53.51,53.51,0,0,0,7.08,15A50,50,0,0,0,84,222h80a74,74,0,0,0,0-148ZM54,104a42,42,0,0,1,77.48-22.49A74.29,74.29,0,0,0,94.2,123,50.36,50.36,0,0,0,84,122a49.65,49.65,0,0,0-22.79,5.52A42,42,0,0,1,54,104ZM164,210H84a38,38,0,1,1,7.08-75.34,75.84,75.84,0,0,0-1.07,9,6,6,0,0,0,12,.7,61.54,61.54,0,0,1,2-12.24c0-.15.08-.29.11-.43A62.06,62.06,0,1,1,164,210Z"/></symbol>
+<symbol id="i-senal" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M128,90a38,38,0,1,0,38,38A38,38,0,0,0,128,90Zm0,64a26,26,0,1,1,26-26A26,26,0,0,1,128,154Zm78-26a77.74,77.74,0,0,1-19.86,52,6,6,0,0,1-8.94-8,65.93,65.93,0,0,0,0-88,6,6,0,1,1,8.94-8A77.74,77.74,0,0,1,206,128ZM67.18,102.31A65.93,65.93,0,0,0,78.8,172a6,6,0,0,1-.47,8.47,6,6,0,0,1-8.47-.47,77.93,77.93,0,0,1,0-104,6,6,0,1,1,8.94,8A66.21,66.21,0,0,0,67.18,102.31ZM246,128a117.71,117.71,0,0,1-33.71,82.58,6,6,0,0,1-8.58-8.4,105.88,105.88,0,0,0,0-148.36,6,6,0,0,1,8.58-8.4A117.71,117.71,0,0,1,246,128ZM52.29,202.18a6,6,0,0,1-8.58,8.4,117.92,117.92,0,0,1,0-165.16,6,6,0,1,1,8.58,8.4,105.88,105.88,0,0,0,0,148.36Z"/></symbol>
+<symbol id="i-potencia" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M213.84,118.63a6,6,0,0,0-3.73-4.25L150.88,92.17l15-75a6,6,0,0,0-10.27-5.27l-112,120a6,6,0,0,0,2.28,9.71l59.23,22.21-15,75a6,6,0,0,0,3.14,6.52A6.07,6.07,0,0,0,96,246a6,6,0,0,0,4.39-1.91l112-120A6,6,0,0,0,213.84,118.63ZM106,220.46l11.85-59.28a6,6,0,0,0-3.77-6.8l-55.6-20.85,91.46-98L138.12,94.82a6,6,0,0,0,3.77,6.8l55.6,20.85Z"/></symbol>
+<symbol id="i-rumbo" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M128,26A102,102,0,1,0,230,128,102.12,102.12,0,0,0,128,26Zm0,192a90,90,0,1,1,90-90A90.1,90.1,0,0,1,128,218ZM173.32,74.63l-64,32a6,6,0,0,0-2.69,2.69l-32,64A6,6,0,0,0,80,182a6.06,6.06,0,0,0,2.68-.63l64-32a6,6,0,0,0,2.69-2.69l32-64a6,6,0,0,0-8.05-8.05Zm-33.79,64.9L93.42,162.58l23-46.11,46.11-23Z"/></symbol>
+<symbol id="i-aviso" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M235.07,189.09,147.61,37.22h0a22.75,22.75,0,0,0-39.22,0L20.93,189.09a21.53,21.53,0,0,0,0,21.72A22.35,22.35,0,0,0,40.55,222h174.9a22.35,22.35,0,0,0,19.6-11.19A21.53,21.53,0,0,0,235.07,189.09ZM224.66,204.8a10.46,10.46,0,0,1-9.21,5.2H40.55a10.46,10.46,0,0,1-9.21-5.2,9.51,9.51,0,0,1,0-9.72L118.79,43.21a10.75,10.75,0,0,1,18.42,0l87.46,151.87A9.51,9.51,0,0,1,224.66,204.8ZM122,144V104a6,6,0,0,1,12,0v40a6,6,0,0,1-12,0Zm16,36a10,10,0,1,1-10-10A10,10,0,0,1,138,180Z"/></symbol>
+<symbol id="i-lavadora" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M208,34H48A14,14,0,0,0,34,48V208a14,14,0,0,0,14,14H208a14,14,0,0,0,14-14V48A14,14,0,0,0,208,34Zm2,174a2,2,0,0,1-2,2H48a2,2,0,0,1-2-2V48a2,2,0,0,1,2-2H208a2,2,0,0,1,2,2ZM128,66a62,62,0,1,0,62,62A62.07,62.07,0,0,0,128,66Zm0,112a50,50,0,1,1,50-50A50.06,50.06,0,0,1,128,178ZM198,68a10,10,0,1,1-10-10A10,10,0,0,1,198,68Zm-73.76,48.24-16,16a6,6,0,0,1-8.48-8.48l16-16a6,6,0,0,1,8.48,8.48Zm32-.48a6,6,0,0,1,0,8.48l-32,32a6,6,0,0,1-8.48-8.48l32-32A6,6,0,0,1,156.24,115.76Z"/></symbol>
+<symbol id="i-lavavajillas" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M74,88V40a6,6,0,0,1,12,0V88a6,6,0,0,1-12,0ZM214,40V224a6,6,0,0,1-12,0V174H152a6,6,0,0,1-6-6c0-4.41.68-108.25,59.64-133.51A6,6,0,0,1,214,40ZM202,50c-36.79,24.29-42.82,91.48-43.81,112H202ZM117.92,39a6,6,0,1,0-11.84,2L114,88.48a34,34,0,0,1-68,0L53.92,41a6,6,0,0,0-11.84-2l-8,48A6.61,6.61,0,0,0,34,88a46.06,46.06,0,0,0,40,45.6V224a6,6,0,0,0,12,0V133.6A46.06,46.06,0,0,0,126,88a6.61,6.61,0,0,0-.08-1Z"/></symbol>
+<symbol id="i-secadora" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M182,184a30,30,0,0,1-30,30c-12.9,0-25.36-8.38-29.63-19.92a6,6,0,0,1,11.26-4.16C136.13,196.69,144.2,202,152,202a18,18,0,0,0,0-36H40a6,6,0,0,1,0-12H152A30,30,0,0,1,182,184ZM150,72a30,30,0,0,0-30-30c-12.9,0-25.36,8.38-29.63,19.92a6,6,0,1,0,11.26,4.16C104.13,59.31,112.2,54,120,54a18,18,0,0,1,0,36H24a6,6,0,0,0,0,12h96A30,30,0,0,0,150,72Zm58,2c-12.9,0-25.36,8.38-29.63,19.92a6,6,0,1,0,11.26,4.16C192.13,91.31,200.2,86,208,86a18,18,0,0,1,0,36H32a6,6,0,0,0,0,12H208a30,30,0,0,0,0-60Z"/></symbol>
+<symbol id="i-horno" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M208,34H48A14,14,0,0,0,34,48V208a14,14,0,0,0,14,14H208a14,14,0,0,0,14-14V48A14,14,0,0,0,208,34Zm2,174a2,2,0,0,1-2,2H48a2,2,0,0,1-2-2V48a2,2,0,0,1,2-2H208a2,2,0,0,1,2,2ZM74,76A10,10,0,1,1,84,86,10,10,0,0,1,74,76Zm44,0a10,10,0,1,1,10,10A10,10,0,0,1,118,76Zm44,0a10,10,0,1,1,10,10A10,10,0,0,1,162,76Zm22,30H72a6,6,0,0,0-6,6v72a6,6,0,0,0,6,6H184a6,6,0,0,0,6-6V112A6,6,0,0,0,184,106Zm-6,72H78V118H178Z"/></symbol>
+<symbol id="i-vitro" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M90,48V16a6,6,0,0,1,12,0V48a6,6,0,0,1-12,0Zm38,6a6,6,0,0,0,6-6V16a6,6,0,0,0-12,0V48A6,6,0,0,0,128,54Zm32,0a6,6,0,0,0,6-6V16a6,6,0,0,0-12,0V48A6,6,0,0,0,160,54Zm91.6,46.8L222,123v61a30,30,0,0,1-30,30H64a30,30,0,0,1-30-30V123L4.4,100.8a6,6,0,0,1,7.2-9.6L34,108V80a6,6,0,0,1,6-6H216a6,6,0,0,1,6,6v28l22.4-16.8a6,6,0,0,1,7.2,9.6ZM210,86H46v98a18,18,0,0,0,18,18H192a18,18,0,0,0,18-18Z"/></symbol>
+<symbol id="i-nevera" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M221.83,150.57a6,6,0,0,1-4.4,7.26l-26.62,6.54,7,26.08a6,6,0,0,1-4.24,7.35,6.4,6.4,0,0,1-1.55.2,6,6,0,0,1-5.8-4.45L178.27,164,134,138.39v51.13l22.24,22.24a6,6,0,1,1-8.48,8.48L128,200.49l-19.76,19.75a6,6,0,0,1-8.48-8.48L122,189.52V138.39L77.73,164l-7.93,29.6A6,6,0,0,1,64,198a6.4,6.4,0,0,1-1.55-.2,6,6,0,0,1-4.24-7.35l7-26.08-26.62-6.54a6,6,0,0,1,2.86-11.66l30.23,7.43L116,128,71.66,102.4l-30.23,7.43A5.88,5.88,0,0,1,40,110a6,6,0,0,1-1.43-11.83l26.62-6.54-7-26.08a6,6,0,1,1,11.59-3.1l7.93,29.6L122,117.61V66.48L99.76,44.24a6,6,0,0,1,8.48-8.48L128,55.51l19.76-19.75a6,6,0,0,1,8.48,8.48L134,66.48v51.13l44.27-25.56,7.93-29.6a6,6,0,1,1,11.59,3.1l-7,26.08,26.62,6.54A6,6,0,0,1,216,110a5.88,5.88,0,0,1-1.43-.17l-30.23-7.43L140,128l44.34,25.6,30.23-7.43A6,6,0,0,1,221.83,150.57Z"/></symbol>
+<symbol id="i-acuario" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M166,76a10,10,0,1,1-10-10A10,10,0,0,1,166,76Zm49,66.67c-19.17,34.54-55.11,53.08-106.85,55.14L85.62,250.36A6,6,0,0,1,80.1,254h-.38a6,6,0,0,1-5.39-4.34L59.22,196.77,6.35,181.63a6,6,0,0,1-.71-11.29L58.2,147.85C60.28,96.13,78.81,60.2,113.33,41,159.56,15.34,219,30,222.09,31.78a6,6,0,0,1,2.12,2.11C226,36.94,240.67,96.38,215,142.65Zm-48,29.64A50.06,50.06,0,0,1,130,126,50.09,50.09,0,0,1,83.71,89c-8.46,16.93-13,38-13.63,63a6,6,0,0,1-3.64,5.38L25.88,174.74l39.85,11.41a6,6,0,0,1,4.12,4.12l11.38,39.85,17.39-40.56a6,6,0,0,1,5.37-3.64C129,185.33,150.05,180.76,167,172.29Zm51-94.53a171.1,171.1,0,0,0-3.86-35.92A170.78,170.78,0,0,0,178.25,38H178c-18.52,0-45,3.22-66.67,18.47A83.53,83.53,0,0,0,94.17,72.56a38,38,0,0,0,41.47,41.25,6,6,0,0,1,6.54,6.55,38,38,0,0,0,41.28,41.46,83.13,83.13,0,0,0,16.07-17.07C214.87,123,218.05,96.31,218,77.76Z"/></symbol>
+<symbol id="i-gambario" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M138,116a10,10,0,1,1,10,10A10,10,0,0,1,138,116Zm83.9-32A78.1,78.1,0,0,1,144,158H112a14,14,0,0,0,0,28h56a6,6,0,0,1,0,12H118v20h34a6,6,0,0,1,0,12H96A78,78,0,0,1,96,74H212a14,14,0,0,0,0-28H128a22,22,0,0,1-22-22,6,6,0,0,1,12,0,10,10,0,0,0,10,10h84a26,26,0,0,1,9.9,50ZM50.65,199.88l35.48-25.34A23.74,23.74,0,0,1,86,172a25.92,25.92,0,0,1,1.46-8.57L31.51,138a65.8,65.8,0,0,0,19.14,61.88ZM90.3,186.3,60.49,207.59A65.56,65.56,0,0,0,96,218h10V197.29A26.05,26.05,0,0,1,90.3,186.3ZM106,146.71V86H96a66.1,66.1,0,0,0-60.86,40.47L94,153.24A25.86,25.86,0,0,1,106,146.71ZM209.73,86H118v60h26A66.09,66.09,0,0,0,209.73,86Z"/></symbol>
+<symbol id="i-desconocido" data-origen="phosphor" viewBox="0 0 256 256" fill="currentColor"><path d="M138,180a10,10,0,1,1-10-10A10,10,0,0,1,138,180ZM128,74c-21,0-38,15.25-38,34v4a6,6,0,0,0,12,0v-4c0-12.13,11.66-22,26-22s26,9.87,26,22-11.66,22-26,22a6,6,0,0,0-6,6v8a6,6,0,0,0,12,0v-2.42c18.11-2.58,32-16.66,32-33.58C166,89.25,149,74,128,74Zm102,54A102,102,0,1,1,128,26,102.12,102.12,0,0,1,230,128Zm-12,0a90,90,0,1,0-90,90A90.1,90.1,0,0,0,218,128Z"/></symbol>
+</svg>
 
 <header class="cabecera">
   <div class="contenedor cabecera-fila">
@@ -21,26 +58,26 @@
       <h1>Solar Monitor</h1>
       <p class="sub">Cuándo gastar tu energía y si la factura cuadra con lo que mides</p>
     </div>
-    <button class="btn cuadrado" type="button" id="abrirAjustes" aria-label="Ajustes" title="Ajustes">⚙</button>
+    <button class="btn cuadrado" type="button" id="abrirAjustes" aria-label="Ajustes" title="Ajustes"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-ajustes"></use></svg></button>
   </div>
 </header>
 
 <nav class="pestanas" aria-label="Secciones">
   <div class="contenedor lista-pestanas" role="tablist">
     <button role="tab" type="button" id="pestana-ahora" data-panel="ahora" aria-controls="panel-ahora" aria-selected="true">
-      <span class="icono" aria-hidden="true">🚦</span><span class="rotulo">Ahora</span>
+      <span class="icono" aria-hidden="true"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-ahora"></use></svg></span><span class="rotulo">Ahora</span>
     </button>
     <button role="tab" type="button" id="pestana-datos" data-panel="datos" aria-controls="panel-datos" aria-selected="false" tabindex="-1">
-      <span class="icono" aria-hidden="true">📥</span><span class="rotulo">Datos</span>
+      <span class="icono" aria-hidden="true"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-datos"></use></svg></span><span class="rotulo">Datos</span>
     </button>
     <button role="tab" type="button" id="pestana-cuadra" data-panel="cuadra" aria-controls="panel-cuadra" aria-selected="false" tabindex="-1">
-      <span class="icono" aria-hidden="true">⚖️</span><span class="rotulo">¿Cuadra?</span>
+      <span class="icono" aria-hidden="true"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-cuadra"></use></svg></span><span class="rotulo">¿Cuadra?</span>
     </button>
     <button role="tab" type="button" id="pestana-meses" data-panel="meses" aria-controls="panel-meses" aria-selected="false" tabindex="-1">
-      <span class="icono" aria-hidden="true">📅</span><span class="rotulo">Mes a mes</span>
+      <span class="icono" aria-hidden="true"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-meses"></use></svg></span><span class="rotulo">Mes a mes</span>
     </button>
     <button role="tab" type="button" id="pestana-dia" data-panel="dia" aria-controls="panel-dia" aria-selected="false" tabindex="-1">
-      <span class="icono" aria-hidden="true">🔍</span><span class="rotulo">Día a día</span>
+      <span class="icono" aria-hidden="true"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-dia"></use></svg></span><span class="rotulo">Día a día</span>
     </button>
   </div>
 </nav>
@@ -77,13 +114,13 @@
     <section class="tarjeta" id="reserva" hidden>
       <h2>Reserva recomendada esta noche: <span id="pctReserva"></span></h2>
       <p class="ayuda" id="textoReserva"></p>
-      <p class="aviso-reserva" id="avisoReserva" hidden>🔋 Guarda batería: evita consumos grandes hasta que vuelva el sol.</p>
+      <p class="aviso-reserva" id="avisoReserva" hidden><svg class="i" aria-hidden="true" focusable="false"><use href="#i-bateria"></use></svg>Guarda batería: evita consumos grandes hasta que vuelva el sol.</p>
     </section>
 
     <section class="tarjeta">
       <h2>Próximas 24 horas</h2>
       <div class="linea" id="linea" role="list"></div>
-      <p class="ayuda leyenda">● buen momento · ▲ cuidado · ■ evita</p>
+      <p class="ayuda leyenda leyenda-formas"><span class="verde"><svg class="i" aria-hidden="true" focusable="false"><use href="#f-bien"></use></svg>buen momento</span> <span class="amarillo"><svg class="i" aria-hidden="true" focusable="false"><use href="#f-cuidado"></use></svg>cuidado</span> <span class="rojo"><svg class="i" aria-hidden="true" focusable="false"><use href="#f-evita"></use></svg>evita</span></p>
     </section>
 
     <section class="tarjeta" id="aprendiendo" hidden>
@@ -232,9 +269,9 @@
 
     <p class="leyenda-fuentes">
       De dónde sale cada dato:
-      <span class="fuente factura">📄 Factura</span> el PDF ·
-      <span class="fuente solarman">☀️ Solarman</span> lo que midió tu instalación (Excel o «Desde Solarman») ·
-      <span class="fuente datadis">🔌 datadis</span> la curva hora a hora del contador
+      <span class="fuente factura"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-documento"></use></svg>Factura</span> el PDF ·
+      <span class="fuente solarman"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-sol"></use></svg>Solarman</span> lo que midió tu instalación (Excel o «Desde Solarman») ·
+      <span class="fuente datadis"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-contador"></use></svg>datadis</span> la curva hora a hora del contador
     </p>
 
     <section id="resumen" hidden>
@@ -245,13 +282,13 @@
     <section class="tarjeta" id="comparacion" hidden>
       <h2>Factura frente a tu instalación</h2>
       <p class="ayuda">
-        <span class="fuente factura">📄 Factura</span> sale del PDF; si no se ha podido leer, escríbelo a mano.
-        <span class="fuente solarman">☀️ Solarman</span> es lo que midió tu instalación en ese mes.
+        <span class="fuente factura"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-documento"></use></svg>Factura</span> sale del PDF; si no se ha podido leer, escríbelo a mano.
+        <span class="fuente solarman"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-sol"></use></svg>Solarman</span> es lo que midió tu instalación en ese mes.
       </p>
       <p class="origen" id="origenComparacion"></p>
       <div class="tabla-envoltorio">
         <table class="tabla" id="tablaFactura">
-          <thead><tr><th>Concepto</th><th class="numero"><span class="fuente factura">📄 Factura</span></th><th class="numero"><span class="fuente solarman">☀️ Solarman</span></th><th class="numero">Diferencia</th></tr></thead>
+          <thead><tr><th>Concepto</th><th class="numero"><span class="fuente factura"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-documento"></use></svg>Factura</span></th><th class="numero"><span class="fuente solarman"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-sol"></use></svg>Solarman</span></th><th class="numero">Diferencia</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -263,7 +300,7 @@
     </section>
 
     <section class="tarjeta" id="revision" hidden>
-      <h2>Las cuentas de la factura <span class="fuente factura">📄 Factura</span></h2>
+      <h2>Las cuentas de la factura <span class="fuente factura"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-documento"></use></svg>Factura</span></h2>
       <p class="ayuda">Solo con los números del PDF: se rehacen sus operaciones, sin compararlas con tu instalación. Si algo no cuadra, es un error de facturación.</p>
       <p class="veredicto" id="veredictoRevision"></p>
       <div class="tabla-envoltorio">
@@ -278,7 +315,7 @@
 
     <section class="tarjeta" id="solapeContador" hidden>
       <div class="titulo-panel">
-        <h2>El contador, hora a hora <span class="fuente datadis">🔌 datadis</span></h2>
+        <h2>El contador, hora a hora <span class="fuente datadis"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-contador"></use></svg>datadis</span></h2>
         <label>Mes
           <select id="mesContador"></select>
         </label>
@@ -384,7 +421,7 @@
 
 <dialog id="ajustes" class="dialogo">
   <form method="dialog" class="cerrar-dialogo">
-    <button class="btn cuadrado" aria-label="Cerrar">✕</button>
+    <button class="btn cuadrado" aria-label="Cerrar"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-cerrar"></use></svg></button>
   </form>
   <h2>Sincronizar entre dispositivos <span id="estadoNube" class="pastilla">sin configurar</span></h2>
   <p class="ayuda">Tu navegador cifra el histórico antes de subirlo. En la nube solo queda un texto ilegible: la clave no sale nunca de aquí. Pega la misma clave maestra en cada dispositivo.</p>

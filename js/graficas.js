@@ -1,20 +1,40 @@
 // Gráficas en canvas, sin librerías: área apilada, barras apiladas y mapa de calor.
 
 const MARGEN = { arriba: 16, derecha: 16, abajo: 28, izquierda: 56 };
-const REJILLA = "#232b36";
-const TEXTO = "#8b98a9";
+const FUENTE = "500 11px 'Plex Mono', ui-monospace, monospace";
 
-export const COLORES = {
-  produccion: "#f2c94c",
-  produccionTotal: "#ffe9a8",
-  autoconsumo: "#f2c94c",
-  importada: "#e05a4a",
-  exportada: "#43b581",
-  carga: "#5b8def",
-  descarga: "#9b7ff0",
-  consumo: "#dfe6ee",
-  soc: "#5b8def",
+// Los colores salen de los tokens de styles.css (§1). El respaldo solo se usa si
+// el CSS aún no está aplicado, y una prueba comprueba que coincide con :root.
+const RESPALDO = {
+  "--linea": "#2E2822",
+  "--texto": "#EEE7DB",
+  "--texto-3": "#9A8F80",
+  "--sol": "#EBC25E",
+  "--sol-tenue": "#9A7F3E",
+  "--coral": "#E57A5F",
+  "--vertido": "#6DB8B0",
+  "--estano": "#A9B8C6",
 };
+const token = (nombre) =>
+  (typeof document !== "undefined" && getComputedStyle(document.documentElement).getPropertyValue(nombre).trim()) || RESPALDO[nombre];
+
+const ROLES = {
+  produccion: "--sol",
+  produccionTotal: "--sol-tenue",
+  autoconsumo: "--sol",
+  importada: "--coral",
+  exportada: "--vertido",
+  carga: "--estano",
+  descarga: "--estano",
+  consumo: "--texto",
+  soc: "--estano",
+};
+export const COLORES = Object.defineProperties(
+  {},
+  Object.fromEntries(Object.entries(ROLES).map(([rol, nombre]) => [rol, { enumerable: true, get: () => token(nombre) }]))
+);
+const rejilla = () => token("--linea");
+const textoEje = () => token("--texto-3");
 
 function preparar(canvas) {
   const escala = window.devicePixelRatio || 1;
@@ -25,7 +45,7 @@ function preparar(canvas) {
   const ctx = canvas.getContext("2d");
   ctx.setTransform(escala, 0, 0, escala, 0, 0);
   ctx.clearRect(0, 0, ancho, alto);
-  ctx.font = "11px system-ui, -apple-system, sans-serif";
+  ctx.font = FUENTE;
   return {
     ctx,
     ancho,
@@ -44,8 +64,8 @@ function pasoBonito(bruto) {
 
 function ejeVertical(ctx, caja, minimo, maximo, formato) {
   const paso = pasoBonito((maximo - minimo) / 4);
-  ctx.strokeStyle = REJILLA;
-  ctx.fillStyle = TEXTO;
+  ctx.strokeStyle = rejilla();
+  ctx.fillStyle = textoEje();
   ctx.lineWidth = 1;
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
@@ -103,7 +123,7 @@ export function areaApilada(canvas, { instantes, capas, lineas = [], unidad = "W
 
     ejeVertical(ctx, caja, 0, maximo, (v) => (unidad === "W" && maximo >= 2000 ? `${(v / 1000).toFixed(1)} kW` : `${Math.round(v)} ${unidad}`));
 
-    ctx.fillStyle = TEXTO;
+    ctx.fillStyle = textoEje();
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     for (let hora = 0; hora <= 24; hora += 4) {
@@ -119,8 +139,10 @@ export function areaApilada(canvas, { instantes, capas, lineas = [], unidad = "W
       for (let i = 0; i < instantes.length; i++) ctx.lineTo(aX(instantes[i]), aY(acumulado[i] + Math.max(capa.valores[i] || 0, 0)));
       for (let i = instantes.length - 1; i >= 0; i--) ctx.lineTo(aX(instantes[i]), aY(acumulado[i]));
       ctx.closePath();
-      ctx.fillStyle = capa.color + "cc";
+      ctx.fillStyle = capa.color;
+      ctx.globalAlpha = 0.8;
       ctx.fill();
+      ctx.globalAlpha = 1;
       for (let i = 0; i < instantes.length; i++) acumulado[i] += Math.max(capa.valores[i] || 0, 0);
     }
 
@@ -139,9 +161,11 @@ export function areaApilada(canvas, { instantes, capas, lineas = [], unidad = "W
       ctx.beginPath();
       ctx.moveTo(x, caja.y0);
       ctx.lineTo(x, caja.y1);
-      ctx.strokeStyle = "rgba(255,255,255,.35)";
+      ctx.strokeStyle = token("--texto");
+      ctx.globalAlpha = 0.35;
       ctx.lineWidth = 1;
       ctx.stroke();
+      ctx.globalAlpha = 1;
     }
   };
 
@@ -217,7 +241,7 @@ export function barrasApiladas(canvas, { etiquetas, capas, unidad = "kWh" }) {
     }
   }
 
-  ctx.fillStyle = TEXTO;
+  ctx.fillStyle = textoEje();
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
   const salto = Math.ceil(etiquetas.length / 15);
@@ -255,7 +279,7 @@ export function barrasAgrupadas(canvas, { etiquetas, series, unidad = "kWh" }) {
     }
   });
 
-  ctx.fillStyle = TEXTO;
+  ctx.fillStyle = textoEje();
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
   etiquetas.forEach((etiqueta, i) => ctx.fillText(etiqueta, caja.x0 + i * anchoHueco + anchoHueco / 2, caja.y1 + 6));
@@ -264,7 +288,7 @@ export function barrasAgrupadas(canvas, { etiquetas, series, unidad = "kWh" }) {
 }
 
 /** Mapa de calor día (columnas) × hora (filas). */
-export function mapaCalor(canvas, { dias, matriz, color = "#e05a4a" }) {
+export function mapaCalor(canvas, { dias, matriz, color = COLORES.importada }) {
   const { ctx, caja } = preparar(canvas);
   if (!dias.length) return;
 
@@ -274,17 +298,17 @@ export function mapaCalor(canvas, { dias, matriz, color = "#e05a4a" }) {
 
   const anchoCelda = (caja.x1 - caja.x0) / dias.length;
   const altoCelda = (caja.y1 - caja.y0) / 24;
-  const [r, g, b] = [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16));
-
+  ctx.fillStyle = color;
   for (let d = 0; d < dias.length; d++) {
     for (let h = 0; h < 24; h++) {
       const intensidad = (matriz[d]?.[h] || 0) / maximo;
-      ctx.fillStyle = `rgba(${r},${g},${b},${0.06 + intensidad * 0.94})`;
+      ctx.globalAlpha = 0.06 + intensidad * 0.94;
       ctx.fillRect(caja.x0 + d * anchoCelda, caja.y0 + h * altoCelda, Math.ceil(anchoCelda), Math.ceil(altoCelda));
     }
   }
 
-  ctx.fillStyle = TEXTO;
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = textoEje();
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
   for (let h = 0; h < 24; h += 6) ctx.fillText(`${String(h).padStart(2, "0")}h`, caja.x0 - 8, caja.y0 + h * altoCelda + altoCelda / 2);
@@ -317,10 +341,12 @@ export function lineaSimple(canvas, { instantes, valores, color = COLORES.soc, u
   ctx.lineTo(aX(t1), caja.y1);
   ctx.lineTo(aX(t0), caja.y1);
   ctx.closePath();
-  ctx.fillStyle = color + "22";
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.13;
   ctx.fill();
+  ctx.globalAlpha = 1;
 
-  ctx.fillStyle = TEXTO;
+  ctx.fillStyle = textoEje();
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
   for (let hora = 0; hora <= 24; hora += 4) {

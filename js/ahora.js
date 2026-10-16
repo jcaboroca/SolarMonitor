@@ -10,6 +10,7 @@ import { urlMercado, leerMercado, preciosIndexados, INDEXADA_POR_DEFECTO } from 
 import { leerSerie } from "./historico.js";
 import { deserializarSerie } from "./datos.js";
 import { hayNube, pedirNube } from "./nube.js";
+import { iconoAparato, iconoRazon, forma, htmlIcono } from "./iconos.js";
 
 const $ = (id) => document.getElementById(id);
 const HORA = 3600000;
@@ -213,7 +214,6 @@ function cargaElegida(c) {
 // --- Pintado -----------------------------------------------------------------
 
 const ROTULO = { verde: "Buen momento", amarillo: "Cuidado", rojo: "Evita ahora" };
-const FORMA = { verde: "●", amarillo: "▲", rojo: "■" };
 const fmt = (x, d = 1) => x.toLocaleString("es-ES", { minimumFractionDigits: d, maximumFractionDigits: d });
 const hhmm = (d) => d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
 
@@ -232,6 +232,14 @@ function elemento(etiqueta, clase, texto) {
   return e;
 }
 
+// Icono del sprite delante de un texto: el texto no cambia, el emoji desaparece.
+function conIcono(e, icono, texto = "") {
+  e.replaceChildren();
+  if (icono) e.insertAdjacentHTML("afterbegin", htmlIcono(icono));
+  e.append(texto);
+  return e;
+}
+
 function pintarDecision() {
   const k = contexto;
   const carga = cargaElegida(k.c);
@@ -244,7 +252,9 @@ function pintarDecision() {
   // Semaforo: forma + texto + color, nunca solo color.
   const luz = $("luzSemaforo");
   luz.dataset.estado = decision.estado || "";
-  $("formaSemaforo").textContent = FORMA[decision.estado] || "?";
+  const figura = forma(decision.estado);
+  if (figura) $("formaSemaforo").innerHTML = htmlIcono(figura);
+  else $("formaSemaforo").textContent = "?";
   $("tituloSemaforo").textContent = decision.titulo;
   $("semaforo").setAttribute("aria-label", `${ROTULO[decision.estado] || "Sin datos"}: ${decision.titulo}`);
 
@@ -252,17 +262,19 @@ function pintarDecision() {
   cifras.replaceChildren();
   if (k.vivo) {
     cifras.append(
-      elemento("span", "", `☀️ ${fmt(k.vivo.solarW / 1000, 2)} kW`),
-      elemento("span", "", `🏠 ${fmt(k.vivo.casaW / 1000, 2)} kW`),
-      elemento("span", "", `🔋 ${Math.round(k.vivo.soc)} %`)
+      conIcono(elemento("span"), "i-sol", `${fmt(k.vivo.solarW / 1000, 2)} kW`),
+      conIcono(elemento("span"), "i-casa", `${fmt(k.vivo.casaW / 1000, 2)} kW`),
+      conIcono(elemento("span"), "i-bateria", `${Math.round(k.vivo.soc)} %`)
     );
   } else {
-    cifras.append(elemento("span", "estimado", `🔋 ~${Math.round(k.socPct)} % (estimado)`));
+    cifras.append(conIcono(elemento("span", "estimado"), "i-bateria", `~${Math.round(k.socPct)} % (estimado)`));
   }
 
-  $("costeAhora").textContent = decision.ahora
-    ? `${carga.icono} ${carga.nombre} ahora: ${euros(decision.ahora.coste)}${carga.estimado ? " · consumo estimado" : ""}`
-    : "";
+  if (decision.ahora) {
+    conIcono($("costeAhora"), iconoAparato(carga.id), `${carga.nombre} ahora: ${euros(decision.ahora.coste)}${carga.estimado ? " · consumo estimado" : ""}`);
+  } else {
+    $("costeAhora").textContent = "";
+  }
 
   const proxima = $("proximaVentana");
   if (decision.mejor && decision.mejor !== decision.ahora) {
@@ -291,7 +303,7 @@ function pintarDecision() {
   lista.replaceChildren(
     ...decision.razones.map((r) => {
       const li = elemento("li");
-      li.append(elemento("span", "icono", r.icono), elemento("span", "", r.texto));
+      li.append(conIcono(elemento("span", "icono"), iconoRazon(r.icono)), elemento("span", "", r.texto));
       return li;
     })
   );
@@ -336,7 +348,7 @@ function pintarLinea(carga) {
       celda.title = etiqueta;
       celda.setAttribute("role", "listitem");
       celda.setAttribute("aria-label", etiqueta);
-      celda.append(elemento("span", "marca", FORMA[h.estado]), elemento("span", "rotulo", String(h.inicio.getHours()).padStart(2, "0")));
+      celda.append(conIcono(elemento("span", "marca"), forma(h.estado)), elemento("span", "rotulo", String(h.inicio.getHours()).padStart(2, "0")));
       return celda;
     })
   );
@@ -353,9 +365,9 @@ function pintarLinea(carga) {
     const enElSuelo = k.socPct <= k.c.bateria.socMinimoPct + 2;
     const aviso = $("avisoReserva");
     aviso.hidden = reserva.suficiente;
-    aviso.textContent = enElSuelo
-      ? "🔋 La batería ya está en la reserva mínima: lo que consumas hasta que vuelva el sol saldrá de la red."
-      : "🔋 Guarda batería: evita consumos grandes hasta que vuelva el sol.";
+    conIcono(aviso, "i-bateria", enElSuelo
+      ? "La batería ya está en la reserva mínima: lo que consumas hasta que vuelva el sol saldrá de la red."
+      : "Guarda batería: evita consumos grandes hasta que vuelva el sol.");
   }
 
   const aprendiendo = $("aprendiendo");
@@ -376,7 +388,7 @@ function pintarAparatos(elegida) {
       boton.type = "button";
       boton.setAttribute("role", "radio");
       boton.setAttribute("aria-checked", String(a.id === elegida.id));
-      boton.append(elemento("span", "", a.icono), elemento("span", "", a.nombre));
+      boton.append(conIcono(elemento("span"), iconoAparato(a.id)), elemento("span", "", a.nombre));
       boton.addEventListener("click", () => {
         guardarConfig({ aparato: a.id });
         contexto.c = leerConfig();
@@ -419,7 +431,7 @@ function pintarAjustes() {
     ...propios.map((a) => {
       const fila = elemento("tr");
       fila.dataset.id = a.id;
-      fila.append(elemento("td", "", `${a.icono} ${a.nombre}${a.estimado ? " (estimado)" : ""}`));
+      fila.append(conIcono(elemento("td"), iconoAparato(a.id), `${a.nombre}${a.estimado ? " (estimado)" : ""}`));
       for (const [campo, paso] of [["energiaKwh", "0.1"], ["duracionH", "0.25"], ["potenciaPicoW", "100"]]) {
         const td = elemento("td", "numero");
         const input = elemento("input");
@@ -439,7 +451,7 @@ function pintarAjustes() {
     ...CONSUMOS_FIJOS.map((f) => {
       const fila = elemento("tr");
       fila.append(
-        elemento("td", "", `${f.icono} ${f.nombre}`),
+        conIcono(elemento("td"), iconoAparato(f.id), f.nombre),
         elemento("td", "ayuda", f.detalle),
         elemento("td", "numero", f.kwhDia === null ? "—" : `≈ ${fmt(f.kwhDia)} kWh`)
       );
@@ -471,7 +483,7 @@ async function vincularSolarman() {
   marca.className = "estado";
   if (!hayNube()) {
     marca.className = "estado error";
-    marca.textContent = "Antes hay que configurar la sincronización (⚙ arriba).";
+    marca.textContent = "Antes hay que configurar la sincronización (botón Ajustes, arriba).";
     return;
   }
   marca.textContent = "Probando…";

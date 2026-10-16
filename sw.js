@@ -1,7 +1,7 @@
 // Los ficheros del programa se piden a la red primero para que una versión nueva
 // entre sin trucos; las librerías de vendor van desde memoria porque no cambian.
 
-const CACHE = "solar-monitor-v38";
+const CACHE = "solar-monitor-v39";
 const BASE = [
   "./",
   "./index.html",
@@ -25,8 +25,13 @@ const BASE = [
   "./js/historico.js",
   "./js/nube.js",
   "./js/datadis.js",
+  "./js/iconos.js",
   "./vendor/pdf.min.js",
   "./vendor/pdf.worker.min.js",
+  "./vendor/fuentes/IBM%20Plex%20Sans%20Var-Roman-Latin1.woff2",
+  "./vendor/fuentes/IBM%20Plex%20Sans%20Var-Roman-Pi.woff2",
+  "./vendor/fuentes/IBM%20Plex%20Mono%20Var-Roman-Latin1.woff2",
+  "./vendor/fuentes/IBM%20Plex%20Mono%20Var-Roman-Pi.woff2",
   "./assets/icono.svg",
 ];
 

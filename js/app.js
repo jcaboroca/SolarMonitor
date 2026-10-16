@@ -10,6 +10,7 @@ import { leerHistorico, guardarMes, borrarMes, importarHistorico, exportarTodo, 
 import { hayNube, urlNube, claveMaestra, configurarNube, bajarDeNube, subirANube, sincronizarPronto, pedirNube } from "./nube.js";
 import * as datadis from "./datadis.js";
 import { iniciarAhora, pintarAhora } from "./ahora.js";
+import { htmlIcono, htmlFuente } from "./iconos.js";
 
 const $ = (id) => document.getElementById(id);
 const estado = { cabeceras: [], filas: [], roles: [], unidades: [], serie: null, dias: [], factura: null };
@@ -202,7 +203,7 @@ function pintarFichas() {
   const t = totales();
   const mes = mesDominante(estado.dias.map((d) => d.fecha));
   $("origenResumen").innerHTML =
-    `<span class="fuente solarman">☀️ Solarman</span> ${mes ? nombreMes(mes) : ""} · ${estado.dias.length} días medidos por tu instalación`;
+    `${htmlFuente("solarman")} ${mes ? nombreMes(mes) : ""} · ${estado.dias.length} días medidos por tu instalación`;
   const fichas = [
     ["Producción solar", t.produccion, "kWh", COLORES.produccion],
     ["Consumo de la casa", t.consumo, "kWh", COLORES.consumo],
@@ -286,20 +287,20 @@ const fechaCorta = (valor) => new Date(valor).toLocaleDateString("es-ES", { day:
 // Que se vea de qué periodo es cada columna y si no casan.
 function pintarOrigenComparacion(f) {
   const mesSolarman = mesDominante(estado.dias.map((d) => d.fecha));
-  const partes = [`<span class="fuente solarman">☀️ Solarman</span> ${mesSolarman ? nombreMes(mesSolarman) : "—"}`];
+  const partes = [`${htmlFuente("solarman")} ${mesSolarman ? nombreMes(mesSolarman) : "—"}`];
   let mesFactura = null;
   if (f?.desde && f?.hasta) {
     const desde = new Date(f.desde), hasta = new Date(f.hasta);
     mesFactura = mesDominante([new Date((desde.getTime() + hasta.getTime()) / 2)]);
-    partes.unshift(`<span class="fuente factura">📄 Factura</span> del ${fechaCorta(desde)} al ${fechaCorta(hasta)}`);
+    partes.unshift(`${htmlFuente("factura")} del ${fechaCorta(desde)} al ${fechaCorta(hasta)}`);
   } else {
-    partes.unshift(`<span class="fuente factura">📄 Factura</span> sin PDF cargado`);
+    partes.unshift(`${htmlFuente("factura")} sin PDF cargado`);
   }
   const distintos = mesFactura && mesSolarman && mesFactura !== mesSolarman;
   $("origenComparacion").innerHTML =
     partes.join(" · ") +
     (distintos
-      ? `<br><b class="desvio-mal">⚠️ No son del mismo mes: la factura es de ${nombreMes(mesFactura)} y los datos de Solarman de ${nombreMes(mesSolarman)}. Trae ${nombreMes(mesFactura)} en Datos antes de comparar.</b>`
+      ? `<br><b class="desvio-mal">${htmlIcono("i-aviso")} No son del mismo mes: la factura es de ${nombreMes(mesFactura)} y los datos de Solarman de ${nombreMes(mesSolarman)}. Trae ${nombreMes(mesFactura)} en Datos antes de comparar.</b>`
       : "");
 }
 
@@ -405,14 +406,14 @@ function pintarLecturas(f) {
   const total = filas.reduce((suma, fila) => suma + fila.diferencia, 0);
   const precio = f.precio.P1 ?? 0;
   caja.innerHTML =
-    `<h3>Lecturas del contador impresas en la factura <span class="fuente factura">📄 Factura</span></h3>` +
+    `<h3>Lecturas del contador impresas en la factura ${htmlFuente("factura")}</h3>` +
     `<p class="ayuda">Las dos columnas salen del PDF: lo que la factura dice que marcó el contador y lo que cobra. No es datadis.</p>` +
     `<div class="tabla-envoltorio"><table class="tabla">` +
     `<thead><tr><th>Periodo</th><th class="numero">Lectura</th><th class="numero">Facturado</th><th class="numero">Diferencia</th></tr></thead><tbody>` +
     filas
       .map(
         (fila) =>
-          `<tr><td>${fila.periodo}${fila.estimada ? " ⚠️ estimada" : ""}</td>` +
+          `<tr><td>${fila.periodo}${fila.estimada ? ` ${htmlIcono("i-aviso")} estimada` : ""}</td>` +
           `<td class="numero">${numero(fila.leido)} kWh</td>` +
           `<td class="numero">${numero(fila.facturado)} kWh</td>` +
           `<td class="numero ${fila.diferencia > 0 ? "desvio-mal" : ""}">${fila.diferencia > 0 ? "+" : ""}${numero(fila.diferencia)} kWh</td></tr>`
@@ -625,14 +626,14 @@ function pintarDetalleMes(mes) {
     (faltan.length ? ` Falta cargar ${faltan.join(" y ")} de este mes.` : "") +
     `</p>` +
     `<div class="fichas">` +
-    ficha("Producción solar ☀️", fila.medido?.produccion, "kWh", COLORES.produccion) +
-    ficha("Consumo de la casa ☀️", fila.medido?.consumo, "kWh", COLORES.consumo) +
-    ficha("Comprado 🔌 datadis", c?.total, "kWh", COLORES.importada) +
-    ficha("Vertido 🔌 datadis", c?.vertido, "kWh", COLORES.exportada) +
-    ficha("Importe 📄", fila.factura?.importe, "€", COLORES.carga) +
+    ficha(`Producción solar ${htmlIcono("i-sol")}`, fila.medido?.produccion, "kWh", COLORES.produccion) +
+    ficha(`Consumo de la casa ${htmlIcono("i-sol")}`, fila.medido?.consumo, "kWh", COLORES.consumo) +
+    ficha(`Comprado ${htmlIcono("i-contador")} datadis`, c?.total, "kWh", COLORES.importada) +
+    ficha(`Vertido ${htmlIcono("i-contador")} datadis`, c?.vertido, "kWh", COLORES.exportada) +
+    ficha(`Importe ${htmlIcono("i-documento")}`, fila.factura?.importe, "€", COLORES.carga) +
     `</div>` +
     `<div class="tabla-envoltorio"><table class="tabla">` +
-    `<thead><tr><th>Concepto</th><th class="numero"><span class="fuente solarman">☀️ Solarman</span></th><th class="numero"><span class="fuente datadis">🔌 datadis</span></th><th class="numero"><span class="fuente factura">📄 Factura</span></th></tr></thead><tbody>` +
+    `<thead><tr><th>Concepto</th><th class="numero">${htmlFuente("solarman")}</th><th class="numero">${htmlFuente("datadis")}</th><th class="numero">${htmlFuente("factura")}</th></tr></thead><tbody>` +
     conceptos
       .map(([etiqueta, propio, contador, factura]) => `<tr><td>${etiqueta}</td>${dato(propio)}${dato(contador)}${dato(factura)}</tr>`)
       .join("") +
@@ -689,7 +690,7 @@ function notaPeriodo() {
   if (claveDia(primero) === claveDia(desde) && claveDia(ultimo) === claveDia(hasta)) {
     return `${propio} Coinciden con el periodo facturado (${formato(desde)} a ${formato(hasta)}).`;
   }
-  return `⚠️ Ojo: la factura va del ${formato(desde)} al ${formato(hasta)} y tus datos van del ${formato(primero)} al ${formato(ultimo)}. Exporta el mismo tramo para que la comparación valga.`;
+  return `Ojo: la factura va del ${formato(desde)} al ${formato(hasta)} y tus datos van del ${formato(primero)} al ${formato(ultimo)}. Exporta el mismo tramo para que la comparación valga.`;
 }
 
 // --- Gráficas --------------------------------------------------------------
@@ -1394,6 +1395,13 @@ $("abrirAjustes").addEventListener("click", () => $("ajustes").showModal());
 
 iniciarAhora({ visible: () => !$("panel-ahora").hidden });
 abrirPestana(location.hash.slice(1), false);
+
+// Los ejes de los canvas van en Plex Mono: si la fuente llega después del primer
+// pintado, se repinta una vez la pestaña abierta (Ahora no tiene canvas).
+document.fonts?.ready.then(() => {
+  const abierta = PESTANAS.find((nombre) => !$(`panel-${nombre}`).hidden);
+  if (abierta && abierta !== "ahora") repintarPanel(abierta);
+});
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));

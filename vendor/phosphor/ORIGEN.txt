@@ -1,0 +1,36 @@
+Iconos de Phosphor Icons copiados para SolarMonitor (sprite en index.html).
+Repositorio: https://github.com/phosphor-icons/core
+Commit:      2b75f3ad12b420c9504ef05df8d2564a28f8500e (rama main, 06-ene-2026)
+Licencia:    MIT, Copyright (c) 2023 Phosphor Icons. Texto íntegro en LICENSE.
+Copiado:     16-oct-2026. De cada SVG se toma el contenido gráfico sin tocar y se
+             envuelve en <symbol> con su viewBox original.
+
+símbolo  fichero de origen  SHA-256 del fichero original
+
+i-datos  assets/light/tray-arrow-down-light.svg  cd749eb2822ff9b2f676770d4186d6696362cd2f3f4cb5411e7a168aa68b73ef
+i-cuadra  assets/light/scales-light.svg  ef1d2a21d677e1885bf58c2e05d5d60f8523f8533e301d5b8d447750ada2a309
+i-meses  assets/light/calendar-blank-light.svg  dc88216f4609e3f8fdd18f0de6b3643aefef412ac3ea5606c7e1f303ff2f16a2
+i-ajustes  assets/light/sliders-horizontal-light.svg  fc2bcb8ac38ce3a38f0dabe03e2e6dd19dbd40e978b86797e498e8ac80cedd18
+i-cerrar  assets/light/x-light.svg  7f3f44f5e9fdc40d7d8ecaf49c9b2cca95a6f7b944f81f7ae5d8d8bb674d8d91
+i-sol  assets/light/sun-light.svg  bc3557822da55c4ebe6f80d68a0a7992b13060c0754a0ad7953d2321530777f6
+i-casa  assets/light/house-light.svg  490d0a589e421622cdc0bbb511dc6fd6959fbee6c4b7b56229b05f95ae5444ac
+i-bateria  assets/light/battery-high-light.svg  88f10f985249267417fdb7686ea636843f5a1abcc24b833a0be55be41cc014b8
+i-red  assets/light/plug-light.svg  4a6d995b7bf6d1cc3c470abee0ee234bbe60a715798b4b2a12070369d3eba095
+i-contador  assets/light/gauge-light.svg  5aa3f85db15d91f654f6751652fe9db696aac2c5c428b343ad57ece596ddf699
+i-documento  assets/light/file-text-light.svg  4579a0026554224ce339d52b4bf468f246e010f58bec025f5019f63e3ab67530
+i-euro  assets/light/currency-eur-light.svg  338f9a02831af643d201039c791405883ca3b188fc759d0a8524cbf6c9c2f80e
+i-reloj  assets/light/clock-light.svg  54651e7a959c0fff191dbd0c00f7cfb1bd81b9bebc7b5acb494cb94063f017ed
+i-prevision  assets/light/cloud-sun-light.svg  94c7545fb6817fdad3f0a69257a7b0ff92ff3292cdf1633f9fd4056f79d97f0b
+i-senal  assets/light/broadcast-light.svg  c280ca0eded1b861471a2d40c6490d75199aec8435c28d6fbf57c44fe3f1ac1d
+i-potencia  assets/light/lightning-light.svg  fd7d6084635ba1ba9143e053aae3117a89a9e37505e453068e471a1bde11c0de
+i-rumbo  assets/light/compass-light.svg  990f1a238d74b830ed55c6977fefdc3c559abebaf429fddda51da1c38b0093d5
+i-aviso  assets/light/warning-light.svg  62ed0d3ff4272a0e975a617a2af99d3e93c6dc0e314c4cb2d82e0a5bae652598
+i-lavadora  assets/light/washing-machine-light.svg  95ad4b9634a67edfce5995a239072bf623d41f5437708107cf85210d69fd0f5e
+i-lavavajillas  assets/light/fork-knife-light.svg  65d3160b6b90200914f2edc78a8287e99a4952e0dcbc9d82eda3cde17cf8faeb
+i-secadora  assets/light/wind-light.svg  b19a003dff485631a1d13720366b399953111b6c320170d12d71da44aeb7fb2b
+i-horno  assets/light/oven-light.svg  87d228f924c571d374a4d376531cd499bbc738c1f74eacc316d9f9039400a7d8
+i-vitro  assets/light/cooking-pot-light.svg  d1bd39005cb037f889901e6007227b08d0b7dad16006f604a0be85c58b46863e
+i-nevera  assets/light/snowflake-light.svg  7a1ee4dd479f43b69a65bc2ca02626d4d0f7312e65566c5266ff64c3014da490
+i-acuario  assets/light/fish-light.svg  7124d1b22a249fb441c78a7fb1ab862625f206bf0643bfe4efb2ca904d38f9a0
+i-gambario  assets/light/shrimp-light.svg  c6c605dfb2e60072a7b07da7318d434f8dfd36e661211556ecb4381f603d5e3c
+i-desconocido  assets/light/question-light.svg  c122a1cc393313d1e969e6ae873cf72353198590e50195826a265b65afb38dc0

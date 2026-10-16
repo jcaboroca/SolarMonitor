@@ -38,8 +38,23 @@ del mes» (`24/06, 15/08`) porque no hay ninguna lista fija metida en el código
 - `js/graficas.js` — gráficas en canvas.
 - `js/nube.js` — cifrado y sincronización con el Worker.
 - `worker/` — Worker de Cloudflare que guarda el histórico cifrado.
-- `vendor/` — pdf.js, servido desde el propio repositorio.
+- `vendor/` — pdf.js, las fuentes IBM Plex y la licencia de los iconos, servidos desde el propio repositorio.
+- `js/iconos.js` — traduce aparatos, razones y estados a los iconos del sprite SVG de `index.html`.
 - `muestras/` — datos reales de prueba, fuera del control de versiones.
+
+## Diseño, fuentes e iconos
+
+La interfaz sigue la especificación «Instrumento solar»
+([docs/superpowers/specs/2026-10-16-instrumento-solar-design.md](docs/superpowers/specs/2026-10-16-instrumento-solar-design.md)).
+
+- **Fuentes:** IBM Plex Sans Var e IBM Plex Mono Var, © IBM Corp., con licencia
+  SIL Open Font License 1.1 y nombre reservado «Plex». Se sirven los subconjuntos
+  oficiales sin modificar, copiados de `github.com/IBM/plex`
+  (commit `71f558992315a12ca1f06a2215d57962a1992162`), con su `vendor/fuentes/license.txt`.
+- **Iconos:** los genéricos son de Phosphor Icons (peso Light), © 2023 Phosphor Icons,
+  con licencia MIT; el texto íntegro está en `vendor/phosphor/LICENSE` y el origen exacto
+  de cada icono, en `vendor/phosphor/ORIGEN.txt`. Los de identidad (dial, día y formas del
+  semáforo) son propios.
 
 ## En local
 
