@@ -10,6 +10,7 @@ const RESPALDO = {
   "--linea": "#2E2822",
   "--escala": "#74685A",
   "--texto": "#EEE7DB",
+  "--texto-2": "#ADA293",
   "--texto-3": "#9A8F80",
   "--sol": "#EBC25E",
   "--sol-tenue": "#9A7F3E",
@@ -30,6 +31,7 @@ const ROLES = {
   descarga: "--estano",
   consumo: "--texto",
   soc: "--estano",
+  importe: "--texto-2",
 };
 export const COLORES = Object.defineProperties(
   {},
@@ -352,7 +354,10 @@ export function barrasAgrupadas(canvas, { etiquetas, series, unidad = "kWh" }) {
   ctx.fillStyle = textoEje();
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
-  etiquetas.forEach((etiqueta, i) => ctx.fillText(etiqueta, caja.x0 + i * anchoHueco + anchoHueco / 2, caja.y1 + 6));
+  // Si no caben todas las etiquetas, se escribe una de cada `salto` para que no se pisen.
+  const anchoEtiqueta = Math.max(...etiquetas.map((e) => ctx.measureText(e).width)) + 6;
+  const salto = Math.max(1, Math.ceil(anchoEtiqueta / anchoHueco));
+  etiquetas.forEach((etiqueta, i) => i % salto || ctx.fillText(etiqueta, caja.x0 + i * anchoHueco + anchoHueco / 2, caja.y1 + 6));
   ctx.textAlign = "right";
   ctx.fillText(unidad, caja.x1, caja.y0 - 12);
 }

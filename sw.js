@@ -1,7 +1,7 @@
 // Los ficheros del programa se piden a la red primero para que una versión nueva
 // entre sin trucos; las librerías de vendor van desde memoria porque no cambian.
 
-const CACHE = "solar-monitor-v41";
+const CACHE = "solar-monitor-v42";
 const BASE = [
   "./",
   "./index.html",
@@ -29,6 +29,8 @@ const BASE = [
   "./js/arco.js",
   "./js/relato.js",
   "./js/relato-vista.js",
+  "./js/lectura.js",
+  "./js/anual.js",
   "./vendor/pdf.min.js",
   "./vendor/pdf.worker.min.js",
   "./vendor/fuentes/IBM%20Plex%20Sans%20Var-Roman-Latin1.woff2",
@@ -36,6 +38,11 @@ const BASE = [
   "./vendor/fuentes/IBM%20Plex%20Mono%20Var-Roman-Latin1.woff2",
   "./vendor/fuentes/IBM%20Plex%20Mono%20Var-Roman-Pi.woff2",
   "./assets/icono.svg",
+  "./assets/icono-maskable.svg",
+  "./assets/icono-180.png",
+  "./assets/icono-192.png",
+  "./assets/icono-512.png",
+  "./assets/icono-maskable-512.png",
 ];
 
 self.addEventListener("install", (evento) => {

@@ -18,11 +18,11 @@ function constantesSw() {
   return vm.runInContext("({ CACHE, BASE })", contexto);
 }
 
-test("el service worker guarda relato.js y relato-vista.js y sube la caché a v41", () => {
+test("el service worker guarda relato.js y relato-vista.js y sube la caché a v41 o posterior", () => {
   const { CACHE, BASE } = constantesSw();
   assert.ok(BASE.includes("./js/relato.js"));
   assert.ok(BASE.includes("./js/relato-vista.js"));
-  assert.equal(CACHE, "solar-monitor-v41");
+  assert.ok(Number(CACHE.match(/^solar-monitor-v(\d+)$/)?.[1]) >= 41, CACHE);
 });
 
 test("todo id que piden relato-vista.js y app.js existe en index.html (o lo crea app.js)", () => {

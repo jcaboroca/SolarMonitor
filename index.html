@@ -7,6 +7,7 @@
 <meta name="theme-color" content="#14110E">
 <title>Solar Monitor</title>
 <link rel="icon" href="assets/icono.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/icono-180.png">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -213,40 +214,46 @@
   </div>
 
   <!-- 1 · Datos -->
-  <div class="panel" id="panel-datos" role="tabpanel" aria-labelledby="pestana-datos" tabindex="0" hidden>
+  <div class="panel panel-contado" id="panel-datos" role="tabpanel" aria-labelledby="pestana-datos" tabindex="0" hidden>
 
-    <section class="cargas">
-      <label class="soltar" id="soltarDatos">
-        <input type="file" id="ficheroDatos" accept=".xlsx" hidden>
-        <strong>1 · Datos del datalogger</strong>
-        <span>Arrastra aquí el <b>.xlsx</b> exportado de Solarman o pulsa para elegirlo</span>
+    <section class="cargas" aria-label="Ficheros del mes">
+      <label class="soltar ranura" id="soltarDatos">
+        <input type="file" id="ficheroDatos" accept=".xlsx" class="oculto">
+        <span class="ranura-cabeza"><span class="num">01</span>Datos del datalogger</span>
+        <span class="ranura-cuerpo">
+          <svg class="i ranura-icono" aria-hidden="true" focusable="false"><use href="#i-datos"></use></svg>
+          <span class="ranura-texto">Arrastra aquí el <b>.xlsx</b> exportado de Solarman o pulsa para elegirlo</span>
+        </span>
         <span class="estado" id="estadoDatos"></span>
       </label>
-      <label class="soltar" id="soltarFactura">
-        <input type="file" id="ficheroFactura" accept=".pdf" hidden>
-        <strong>2 · Factura de la luz</strong>
-        <span>Arrastra aquí el <b>.pdf</b> del mismo mes (opcional)</span>
+      <label class="soltar ranura" id="soltarFactura">
+        <input type="file" id="ficheroFactura" accept=".pdf" class="oculto">
+        <span class="ranura-cabeza"><span class="num">02</span>Factura de la luz<span class="ranura-nota">opcional</span></span>
+        <span class="ranura-cuerpo">
+          <svg class="i ranura-icono" aria-hidden="true" focusable="false"><use href="#i-datos"></use></svg>
+          <span class="ranura-texto">Arrastra aquí el <b>.pdf</b> del mismo mes</span>
+        </span>
         <span class="estado" id="estadoFactura"></span>
       </label>
     </section>
 
-    <section class="tarjeta" id="desdeSolarman" hidden>
-      <h2>Desde Solarman</h2>
+    <section class="bloque" id="desdeSolarman" hidden>
+      <h2 class="seccion contada">Desde Solarman</h2>
       <p class="ayuda">El Worker archiva cada noche la curva de 5 minutos del día anterior. Sustituye al Excel: elige el mes y tráelo.</p>
-      <div class="opciones">
+      <div class="opciones campos-fila">
         <label>Mes <select id="mesSolarman"></select></label>
         <button class="btn primario" type="button" id="traerSolarman">Traer</button>
         <span class="estado" id="estadoSolarman"></span>
       </div>
     </section>
 
-    <section class="tarjeta" id="datadis">
-      <h2>3 · Datos del contador</h2>
+    <section class="bloque" id="datadis">
+      <h2 class="seccion contada">Datos del contador</h2>
       <p class="ayuda">
         Descarga la curva horaria que registra tu contador desde datadis, la plataforma conjunta de las distribuidoras.
         Tu navegador habla directamente con datadis: la contraseña no se guarda ni se envía a ningún otro sitio.
       </p>
-      <form id="accesoDatadis" class="opciones" autocomplete="on">
+      <form id="accesoDatadis" class="opciones campos-fila" autocomplete="on">
         <label>DNI/NIF
           <input type="text" id="nifDatadis" autocomplete="username" required>
         </label>
@@ -257,7 +264,7 @@
         <span class="estado" id="estadoDatadis"></span>
       </form>
       <div id="descargaDatadis" hidden>
-        <div class="opciones">
+        <div class="opciones campos-fila">
           <label>Suministro
             <select id="suministroDatadis"></select>
           </label>
@@ -273,9 +280,9 @@
       </div>
     </section>
 
-    <section class="tarjeta plegable" id="mapeo" hidden>
+    <section class="bloque plegable" id="mapeo" hidden>
       <details>
-        <summary>Columnas detectadas</summary>
+        <summary class="seccion contada">Columnas detectadas</summary>
         <p class="ayuda">Revisa que cada columna esté bien identificada. Lo que no uses, déjalo en «Ignorar».</p>
         <div class="tabla-envoltorio">
           <table class="tabla" id="tablaMapeo">
@@ -283,7 +290,7 @@
             <tbody></tbody>
           </table>
         </div>
-        <div class="opciones">
+        <div class="opciones campos-fila">
           <label class="check"><input type="checkbox" id="invertirRed"> La red está al revés (compra y vertido cambiados)</label>
           <label class="check"><input type="checkbox" id="invertirBateria"> La batería está al revés (carga y descarga cambiadas)</label>
           <label>Festivos del mes
@@ -297,7 +304,7 @@
   </div>
 
   <!-- 2 · ¿Cuadra? -->
-  <div class="panel" id="panel-cuadra" role="tabpanel" aria-labelledby="pestana-cuadra" tabindex="0" hidden>
+  <div class="panel panel-contado" id="panel-cuadra" role="tabpanel" aria-labelledby="pestana-cuadra" tabindex="0" hidden>
 
     <p class="vacio">Carga el .xlsx del datalogger en <b>Datos</b> y aquí verás si la factura cuadra.</p>
 
@@ -308,22 +315,22 @@
       <span class="fuente datadis"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-contador"></use></svg>datadis</span> la curva hora a hora del contador
     </p>
 
-    <section id="resumen" hidden>
+    <section class="lectura-mes" id="resumen" hidden>
       <p class="origen" id="origenResumen"></p>
-      <div class="fichas" id="fichas"></div>
+      <div class="lectura-cifras" id="fichas"></div>
     </section>
 
-    <section class="tarjeta" id="comparacion" hidden>
-      <h2>Factura frente a tu instalación</h2>
+    <section class="bloque" id="comparacion" hidden>
+      <h2 class="seccion contada">Factura frente a tu instalación</h2>
       <p class="ayuda">
         <span class="fuente factura"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-documento"></use></svg>Factura</span> sale del PDF; si no se ha podido leer, escríbelo a mano.
         <span class="fuente solarman"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-sol"></use></svg>Solarman</span> es lo que midió tu instalación en ese mes.
       </p>
       <p class="origen" id="origenComparacion"></p>
-      <div class="tabla-envoltorio">
-        <table class="tabla" id="tablaFactura">
-          <thead><tr><th>Concepto</th><th class="numero"><span class="fuente factura"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-documento"></use></svg>Factura</span></th><th class="numero"><span class="fuente solarman"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-sol"></use></svg>Solarman</span></th><th class="numero">Diferencia</th></tr></thead>
-          <tbody></tbody>
+      <div class="tabla-envoltorio acta-envoltorio">
+        <table class="tabla acta" id="tablaFactura" role="table">
+          <thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col">Concepto</th><th role="columnheader" scope="col" class="numero"><span class="fuente factura"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-documento"></use></svg>Factura</span></th><th role="columnheader" scope="col" class="numero"><span class="fuente solarman"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-sol"></use></svg>Solarman</span></th><th role="columnheader" scope="col" class="numero">Diferencia</th><th role="columnheader" scope="col" class="regla-cabeza">Desvío</th></tr></thead>
+          <tbody role="rowgroup"></tbody>
         </table>
       </div>
       <p class="veredicto" id="veredicto"></p>
@@ -333,12 +340,12 @@
       </details>
     </section>
 
-    <section class="tarjeta" id="revision" hidden>
-      <h2>Las cuentas de la factura <span class="fuente factura"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-documento"></use></svg>Factura</span></h2>
+    <section class="bloque" id="revision" hidden>
+      <h2 class="seccion contada">Las cuentas de la factura <span class="fuente factura"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-documento"></use></svg>Factura</span></h2>
       <p class="ayuda">Solo con los números del PDF: se rehacen sus operaciones, sin compararlas con tu instalación. Si algo no cuadra, es un error de facturación.</p>
       <p class="veredicto" id="veredictoRevision"></p>
       <div class="tabla-envoltorio">
-        <table class="tabla" id="tablaRevision">
+        <table class="tabla revision" id="tablaRevision">
           <thead><tr><th>Comprobación</th><th class="numero">Debería dar</th><th class="numero">Pone</th><th class="numero"></th></tr></thead>
           <tbody></tbody>
         </table>
@@ -347,9 +354,9 @@
       <div id="avisosFactura"></div>
     </section>
 
-    <section class="tarjeta" id="solapeContador" hidden>
-      <div class="titulo-panel">
-        <h2>El contador, hora a hora <span class="fuente datadis"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-contador"></use></svg>datadis</span></h2>
+    <section class="bloque" id="solapeContador" hidden>
+      <div class="seccion seccion-mando">
+        <h2 class="contada">El contador, hora a hora <span class="fuente datadis"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-contador"></use></svg>datadis</span></h2>
         <label>Mes
           <select id="mesContador"></select>
         </label>
@@ -361,43 +368,65 @@
         Cada celda es una hora. Cuanto más roja, más energía registró el contador entrando y saliendo a la vez.
         Un contador que compensa bien deja este mapa casi vacío, salvo al amanecer y al anochecer.
       </p>
-      <div class="lienzo medio"><canvas id="mapaSolape"></canvas></div>
+      <div class="lienzo medio pozo"><canvas id="mapaSolape"></canvas></div>
     </section>
 
   </div>
 
   <!-- 3 · Mes a mes -->
-  <div class="panel" id="panel-meses" role="tabpanel" aria-labelledby="pestana-meses" tabindex="0" hidden>
+  <div class="panel panel-contado" id="panel-meses" role="tabpanel" aria-labelledby="pestana-meses" tabindex="0" hidden>
 
     <p class="vacio">Todavía no hay meses guardados. Analiza uno en <b>Datos</b> y pulsa «Guardar este mes».</p>
 
-    <section class="tarjeta" id="historico" hidden>
-      <div class="titulo-panel">
-        <h2>Mes a mes</h2>
+    <section class="meses" id="historico" hidden>
+      <div class="meses-cabeza">
+        <p class="ayuda">Un mes suelto no dice nada; el patrón de varios meses es lo que delata al que se sale.</p>
         <div class="acciones">
           <button class="btn primario" type="button" id="guardarMes">Guardar este mes</button>
-          <button class="btn" type="button" id="exportarHistorico">Descargar copia</button>
-          <label class="btn" for="ficheroHistorico">Restaurar copia</label>
-          <input type="file" id="ficheroHistorico" accept=".json" hidden>
+          <button class="enlace" type="button" id="exportarHistorico"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-datos"></use></svg>Descargar copia</button>
+          <label class="enlace" for="ficheroHistorico"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-documento"></use></svg>Restaurar copia</label>
+          <input type="file" id="ficheroHistorico" accept=".json" class="oculto">
         </div>
       </div>
-      <p class="ayuda">Un mes suelto no dice nada; el patrón de varios meses es lo que delata al que se sale.</p>
       <div id="avisosHistorico"></div>
-      <div class="tabla-envoltorio">
-        <table class="tabla" id="tablaHistorico">
-          <thead><tr>
-            <th>Mes</th><th class="numero">Producido<br><small>tu datalogger</small></th>
-            <th class="numero">Comprado<br><small>kWh · contador</small></th>
-            <th class="numero">Vertido<br><small>kWh · contador</small></th>
-            <th class="numero">Importe<br><small>tu factura</small></th><th class="numero"></th>
-          </tr></thead>
-          <tbody></tbody>
-        </table>
+
+      <div class="meses-seccion anual-bloque" id="bloqueAnual" hidden>
+        <h2 class="seccion contada">El año en rayos</h2>
+        <div class="anual-cuerpo">
+          <figure class="arco anual" id="anual">
+            <svg role="img" aria-labelledby="resumenAnual" viewBox="0 -22 400 242"></svg>
+            <div class="arco-rotulos" aria-hidden="true"></div>
+            <p class="oculto" id="resumenAnual"></p>
+          </figure>
+          <div class="anual-datos">
+            <div class="lectura-cifras" id="lecturaAnual"></div>
+            <p class="arco-leyenda" id="leyendaAnual"></p>
+          </div>
+        </div>
       </div>
-      <p class="ayuda">Pulsa cualquier mes para ver su detalle guardado.</p>
-      <div id="detalleMes" hidden></div>
-      <div class="leyenda" id="leyendaHistorico"></div>
-      <div class="lienzo medio"><canvas id="graficaHistorico"></canvas></div>
+
+      <div class="meses-seccion">
+        <h2 class="seccion contada">Libro de registro</h2>
+        <div class="tabla-envoltorio libro-envoltorio">
+          <table class="tabla libro" id="tablaHistorico" role="table">
+            <thead role="rowgroup"><tr role="row">
+              <th role="columnheader" scope="col">Mes</th><th role="columnheader" scope="col" class="numero">Producido<small>tu datalogger</small></th>
+              <th role="columnheader" scope="col" class="numero">Comprado<small>kWh · contador</small></th>
+              <th role="columnheader" scope="col" class="numero">Vertido<small>kWh · contador</small></th>
+              <th role="columnheader" scope="col" class="numero">Importe<small>tu factura</small></th><th role="columnheader" scope="col" class="numero"><span class="oculto">Borrar</span></th>
+            </tr></thead>
+            <tbody role="rowgroup"></tbody>
+          </table>
+        </div>
+        <div id="detalleMes" hidden></div>
+        <p class="ayuda pie-libro">Pulsa cualquier mes para ver su detalle guardado.</p>
+      </div>
+
+      <div class="meses-seccion comparado">
+        <h2 class="seccion contada">Lo comprado, según cada fuente</h2>
+        <div class="leyenda" id="leyendaHistorico"></div>
+        <div class="lienzo medio"><canvas id="graficaHistorico"></canvas></div>
+      </div>
     </section>
 
   </div>

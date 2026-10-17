@@ -11,9 +11,9 @@ cargada.
 ## Cómo se usa
 
 1. Exporta desde SolarMAN los datos del mes (`.xlsx`, una fila cada 5 minutos).
-2. Suéltalo en la primera caja. Las columnas se detectan solas; si alguna se
+2. Suéltalo en la ranura «01 · Datos del datalogger» de la pestaña *Datos*. Las columnas se detectan solas; si alguna se
    identifica mal, se cambia en la tabla «Columnas detectadas».
-3. Suelta el PDF de la factura del mismo mes en la segunda caja. Los kWh que se
+3. Suelta el PDF de la factura del mismo mes en la ranura «02 · Factura de la luz». Los kWh que se
    consigan leer rellenan la tabla de comparación; lo demás se escribe a mano.
 4. Se comparan los kWh comprados a la red por periodo (P1/P2/P3 de la 2.0TD) y
    los excedentes vertidos.
@@ -40,6 +40,9 @@ del mes» (`24/06, 15/08`) porque no hay ninguna lista fija metida en el código
 - `worker/` — Worker de Cloudflare que guarda el histórico cifrado.
 - `vendor/` — pdf.js, las fuentes IBM Plex y la licencia de los iconos, servidos desde el propio repositorio.
 - `js/iconos.js` — traduce aparatos, razones y estados a los iconos del sprite SVG de `index.html`.
+- `js/lectura.js` — la Lectura de cifras y la regla de desvío del acta de cotejo (*¿Cuadra?*).
+- `js/anual.js` — «El año en rayos» de *Mes a mes*: cada mes guardado, un rayo de producción y una aguja de consumo.
+- `assets/` — icono de la app (SVG, versión maskable y PNG de 180, 192 y 512 px).
 - `muestras/` — datos reales de prueba, fuera del control de versiones.
 
 ## Diseño, fuentes e iconos
@@ -53,8 +56,8 @@ La interfaz sigue la especificación «Instrumento solar»
   (commit `71f558992315a12ca1f06a2215d57962a1992162`), con su `vendor/fuentes/license.txt`.
 - **Iconos:** los genéricos son de Phosphor Icons (peso Light), © 2023 Phosphor Icons,
   con licencia MIT; el texto íntegro está en `vendor/phosphor/LICENSE` y el origen exacto
-  de cada icono, en `vendor/phosphor/ORIGEN.txt`. Los de identidad (dial, día y formas del
-  semáforo) son propios.
+  de cada icono, en `vendor/phosphor/ORIGEN.txt`. Los de identidad (dial, día, formas del
+  semáforo y el icono de la app: el arco sobre el horizonte con el sol en su pista) son propios.
 
 ## En local
 

@@ -12,6 +12,8 @@ import * as datadis from "./datadis.js";
 import { iniciarAhora, pintarAhora } from "./ahora.js";
 import { htmlIcono, htmlFuente } from "./iconos.js";
 import { pintarRelato } from "./relato-vista.js";
+import { htmlRegla, htmlCifra } from "./lectura.js";
+import { modeloAnual, pintarAnual, resaltarMes, htmlLecturaAnual, htmlLeyendaAnual } from "./anual.js";
 
 const $ = (id) => document.getElementById(id);
 const estado = { cabeceras: [], filas: [], roles: [], unidades: [], serie: null, dias: [], factura: null };
@@ -205,17 +207,16 @@ function pintarFichas() {
   const mes = mesDominante(estado.dias.map((d) => d.fecha));
   $("origenResumen").innerHTML =
     `${htmlFuente("solarman")} ${mes ? nombreMes(mes) : ""} · ${estado.dias.length} días medidos por tu instalación`;
+  // Lectura (§5.3): «Comprado a la red» encabeza por CSS; el orden del DOM no cambia.
   const fichas = [
-    ["Producción solar", t.produccion, "kWh", COLORES.produccion],
-    ["Consumo de la casa", t.consumo, "kWh", COLORES.consumo],
-    ["Comprado a la red", t.importada, "kWh", COLORES.importada],
-    ["Vertido a la red", t.exportada, "kWh", COLORES.exportada],
-    ["Cubierto sin la red", t.cobertura, "%", COLORES.carga],
+    ["Producción solar", t.produccion, "kWh", "c-sol"],
+    ["Consumo de la casa", t.consumo, "kWh", "c-casa"],
+    ["Comprado a la red", t.importada, "kWh", "c-red titular-lectura"],
+    ["Vertido a la red", t.exportada, "kWh", "c-vertido"],
+    ["Cubierto sin la red", t.cobertura, "%", "c-ratio"],
   ];
   $("fichas").innerHTML = fichas
-    .map(([titulo, valor, unidad, color]) =>
-      `<dl class="ficha" style="--color:${color}"><dt>${titulo}</dt><dd>${numero(valor, unidad === "%" ? 0 : 1)}<small>${unidad}</small></dd></dl>`
-    )
+    .map(([rotulo, valor, unidad, clase]) => htmlCifra({ rotulo, valor: numero(valor, unidad === "%" ? 0 : 1), unidad, clase }))
     .join("");
   $("resumen").hidden = false;
 }
@@ -265,11 +266,14 @@ function pintarComparacion(refrescarFactura = false) {
     const anterior = refrescarFactura ? null : valorFactura(concepto.clave);
     const valor = anterior ?? deLaFactura[concepto.clave];
     const fila = document.createElement("tr");
+    fila.className = concepto.clave === "total" ? "total" : "";
+    fila.setAttribute("role", "row");
     fila.innerHTML =
-      `<td>${concepto.etiqueta}</td>` +
-      `<td class="numero"><input type="number" step="0.01" min="0" inputmode="decimal" data-clave="${concepto.clave}" value="${valor ?? ""}" aria-label="${concepto.etiqueta} según la factura"> kWh</td>` +
-      `<td class="numero">${numero(medido[concepto.clave])} kWh</td>` +
-      `<td class="numero" data-desvio="${concepto.clave}"></td>`;
+      `<th role="rowheader" scope="row">${concepto.etiqueta}</th>` +
+      `<td role="cell" class="numero" data-rotulo="Factura"><input type="number" step="0.01" min="0" inputmode="decimal" data-clave="${concepto.clave}" value="${valor ?? ""}" aria-label="${concepto.etiqueta} según la factura"> kWh</td>` +
+      `<td role="cell" class="numero" data-rotulo="Solarman">${numero(medido[concepto.clave])} kWh</td>` +
+      `<td role="cell" class="numero" data-rotulo="Diferencia" data-desvio="${concepto.clave}"></td>` +
+      `<td role="cell" class="regla" data-regla="${concepto.clave}"></td>`;
     cuerpo.appendChild(fila);
   }
   cuerpo.querySelectorAll("input").forEach((entrada) => {
@@ -311,10 +315,12 @@ function pintarDesvios() {
 
   for (const concepto of CONCEPTOS) {
     const celda = document.querySelector(`#tablaFactura [data-desvio="${concepto.clave}"]`);
+    const regla = document.querySelector(`#tablaFactura [data-regla="${concepto.clave}"]`);
     const facturado = valorFactura(concepto.clave);
     if (facturado == null) {
       celda.textContent = "—";
       celda.className = "numero";
+      regla.innerHTML = "";
       continue;
     }
     const diferencia = facturado - medido[concepto.clave];
@@ -322,6 +328,7 @@ function pintarDesvios() {
     const signo = diferencia > 0 ? "+" : "";
     celda.textContent = `${signo}${numero(diferencia)} kWh (${signo}${numero(relativo, 1)} %)`;
     celda.className = `numero ${Math.abs(relativo) <= 5 ? "desvio-bien" : "desvio-mal"}`;
+    regla.innerHTML = htmlRegla(relativo);
     if (concepto.clave === "total") veredicto = relativo;
   }
 
@@ -537,17 +544,18 @@ function pintarHistorico() {
 
   const { filas, avisos } = analizarHistorico(meses);
   const cuerpo = $("tablaHistorico").querySelector("tbody");
+  aparcarDetalle();
   cuerpo.textContent = "";
 
   for (const fila of filas) {
     const tr = document.createElement("tr");
-    const celda = (instalacion, contador, factura) => {
+    const celda = (rotulo, instalacion, contador, factura) => {
       const aparte = [];
       if (Number.isFinite(instalacion)) aparte.push(`casa ${numero(instalacion, 0)}`);
       if (Number.isFinite(factura)) aparte.push(`factura ${numero(factura, 0)}`);
       const principal = [contador, factura, instalacion].find((v) => Number.isFinite(v));
       return (
-        `<td class="numero dato"><b>${principal == null ? "—" : numero(principal, 0)}</b>` +
+        `<td role="cell" class="numero dato" data-rotulo="${rotulo}"><b>${principal == null ? "—" : numero(principal, 0)}</b>` +
         (aparte.length ? `<small class="fuentes">${aparte.join(" · ")}</small>` : "") +
         `</td>`
       );
@@ -556,13 +564,14 @@ function pintarHistorico() {
     const sello = c?.horas && c.estimadas === c.horas ? ` <span class="sello">estimado</span>` : "";
     const produccion = Number.isFinite(fila.medido?.produccion) ? `${numero(fila.medido.produccion, 0)} kWh` : "—";
     tr.innerHTML =
-      `<td>${nombreMes(fila.mes)}${sello}<br><small class="tenue">${fila.dias} días</small></td>` +
-      `<td class="numero">${produccion}</td>` +
-      celda(fila.medido?.total, fila.contador?.total, fila.factura?.total) +
-      celda(fila.medido?.excedentes, fila.contador?.vertido, fila.factura?.excedentes) +
-      `<td class="numero">${euros(fila.factura?.importe)}</td>` +
-      `<td class="numero"><button type="button" class="btn cuadrado" data-borrar="${fila.mes}" aria-label="Borrar ${nombreMes(fila.mes)}">×</button></td>`;
+      `<th role="rowheader" scope="row" class="mes"><span class="mes-nombre">${nombreMes(fila.mes)}</span>${sello}<small class="mes-dias">${fila.dias} días</small></th>` +
+      `<td role="cell" class="numero" data-rotulo="Producido">${produccion}</td>` +
+      celda("Comprado", fila.medido?.total, fila.contador?.total, fila.factura?.total) +
+      celda("Vertido", fila.medido?.excedentes, fila.contador?.vertido, fila.factura?.excedentes) +
+      `<td role="cell" class="numero" data-rotulo="Importe">${euros(fila.factura?.importe)}</td>` +
+      `<td role="cell" class="numero borrar-celda"><button type="button" class="borrar" data-borrar="${fila.mes}" aria-label="Borrar ${nombreMes(fila.mes)}" title="Borrar ${nombreMes(fila.mes)}">${htmlIcono("i-cerrar")}</button></td>`;
     tr.dataset.mes = fila.mes;
+    tr.setAttribute("role", "row");
     tr.tabIndex = 0;
     cuerpo.appendChild(tr);
   }
@@ -589,24 +598,81 @@ function pintarHistorico() {
 
   $("avisosHistorico").innerHTML = avisos.map(([tono, texto]) => `<p class="veredicto ${tono}">${texto}</p>`).join("");
   pintarGraficaHistorico(filas);
+  pintarAnualHistorico(meses);
+  // La fila ampliada sigue abierta, con los datos al día, si su mes sigue guardado.
+  if (mesAbierto && filas.some((f) => f.mes === mesAbierto)) pintarDetalleMes(mesAbierto, false);
+  else cerrarDetalle();
+}
+
+// El año en rayos (§5.4): solo con dos o más meses medidos del mismo año.
+function pintarAnualHistorico(meses) {
+  const modelo = modeloAnual(meses);
+  $("bloqueAnual").hidden = !modelo;
+  if (!modelo) return;
+  pintarAnual($("anual"), modelo);
+  $("lecturaAnual").innerHTML = htmlLecturaAnual(modelo);
+  $("leyendaAnual").innerHTML = htmlLeyendaAnual(modelo);
+  resaltarMes($("anual"), mesAbierto);
+}
+
+// #detalleMes se despliega como fila ampliada bajo su mes; fuera de la tabla espera aparcado.
+let mesAbierto = null;
+
+function aparcarDetalle() {
+  const caja = $("detalleMes");
+  const fila = caja.closest("tr");
+  if (fila) {
+    $("tablaHistorico").closest(".tabla-envoltorio").after(caja);
+    fila.remove();
+  }
+}
+
+function cerrarDetalle() {
+  aparcarDetalle();
+  $("detalleMes").hidden = true;
+  mesAbierto = null;
+  marcarFilaActiva(null);
+}
+
+function marcarFilaActiva(mes) {
+  for (const tr of $("tablaHistorico").querySelectorAll("tbody tr[data-mes]")) {
+    const activa = tr.dataset.mes === mes;
+    tr.classList.toggle("activa", activa);
+    if (activa) tr.setAttribute("aria-current", "true");
+    else tr.removeAttribute("aria-current");
+  }
+  resaltarMes($("anual"), mes);
 }
 
 // Reabre un mes ya guardado sin volver a cargar el xlsx ni el PDF.
-function pintarDetalleMes(mes) {
+function pintarDetalleMes(mes, desplazar = true) {
   const fila = leerHistorico().find((m) => m.mes === mes);
   const caja = $("detalleMes");
+  const filaTabla = $("tablaHistorico").querySelector(`tbody tr[data-mes="${mes}"]`);
   if (!fila) {
-    caja.hidden = true;
+    cerrarDetalle();
     return;
   }
+  aparcarDetalle();
+  if (filaTabla) {
+    const ampliada = document.createElement("tr");
+    ampliada.className = "fila-detalle";
+    ampliada.setAttribute("role", "row");
+    const celda = document.createElement("td");
+    celda.setAttribute("role", "cell");
+    celda.colSpan = filaTabla.cells.length;
+    celda.append(caja);
+    ampliada.append(celda);
+    filaTabla.after(ampliada);
+  }
+  mesAbierto = mes;
+  marcarFilaActiva(mes);
   caja.hidden = false;
 
   const c = fila.contador;
   const sello = c?.horas && c.estimadas === c.horas ? ` <span class="sello">estimado</span>` : "";
-  const ficha = (titulo, valor, unidad, color) =>
-    Number.isFinite(valor)
-      ? `<dl class="ficha" style="--color:${color}"><dt>${titulo}</dt><dd>${numero(valor, 1)}<small>${unidad}</small></dd></dl>`
-      : "";
+  const ficha = (rotulo, valor, unidad, clase) =>
+    Number.isFinite(valor) ? htmlCifra({ rotulo, valor: numero(valor, 1), unidad, clase }) : "";
 
   const conceptos = [
     ["Comprado en punta (P1)", fila.medido?.P1, c?.P1, fila.factura?.P1],
@@ -615,33 +681,42 @@ function pintarDetalleMes(mes) {
     ["Comprado en total", fila.medido?.total, c?.total, fila.factura?.total],
     ["Vertido a la red", fila.medido?.excedentes, c?.vertido, fila.factura?.excedentes],
   ];
-  const dato = (valor) => `<td class="numero">${Number.isFinite(valor) ? `${numero(valor)} kWh` : "—"}</td>`;
+  const dato = (valor, rotulo) => `<td role="cell" class="numero" data-rotulo="${rotulo}">${Number.isFinite(valor) ? `${numero(valor)} kWh` : "—"}</td>`;
 
   const faltan = [];
   if (!Number.isFinite(fila.medido?.total)) faltan.push("el fichero del datalogger");
   if (!Number.isFinite(fila.factura?.total)) faltan.push("la factura");
 
+  const clave = (nombre, color) => `<span><i style="background:${color}"></i>${nombre}</span>`;
   caja.innerHTML =
-    `<h3>${nombreMes(fila.mes)}${sello}</h3>` +
+    `<div class="detalle-cabeza">` +
+    `<h3 class="detalle-mes">${nombreMes(fila.mes)}${sello}</h3>` +
     `<p class="ayuda">${fila.dias} días guardados${fila.guardado ? ` · última actualización ${new Date(fila.guardado).toLocaleDateString("es-ES")}` : ""}.` +
     (faltan.length ? ` Falta cargar ${faltan.join(" y ")} de este mes.` : "") +
-    `</p>` +
-    `<div class="fichas">` +
-    ficha(`Producción solar ${htmlIcono("i-sol")}`, fila.medido?.produccion, "kWh", COLORES.produccion) +
-    ficha(`Consumo de la casa ${htmlIcono("i-sol")}`, fila.medido?.consumo, "kWh", COLORES.consumo) +
-    ficha(`Comprado ${htmlIcono("i-contador")} datadis`, c?.total, "kWh", COLORES.importada) +
-    ficha(`Vertido ${htmlIcono("i-contador")} datadis`, c?.vertido, "kWh", COLORES.exportada) +
-    ficha(`Importe ${htmlIcono("i-documento")}`, fila.factura?.importe, "€", COLORES.carga) +
+    `</p></div>` +
+    `<div class="lectura-cifras detalle-cifras">` +
+    ficha(`Producción solar ${htmlIcono("i-sol")}`, fila.medido?.produccion, "kWh", "c-sol") +
+    ficha(`Consumo de la casa ${htmlIcono("i-sol")}`, fila.medido?.consumo, "kWh", "c-casa") +
+    ficha(`Comprado ${htmlIcono("i-contador")} datadis`, c?.total, "kWh", "c-red") +
+    ficha(`Vertido ${htmlIcono("i-contador")} datadis`, c?.vertido, "kWh", "c-vertido") +
+    ficha(`Importe ${htmlIcono("i-documento")}`, fila.factura?.importe, "€", "c-importe") +
     `</div>` +
-    `<div class="tabla-envoltorio"><table class="tabla">` +
-    `<thead><tr><th>Concepto</th><th class="numero">${htmlFuente("solarman")}</th><th class="numero">${htmlFuente("datadis")}</th><th class="numero">${htmlFuente("factura")}</th></tr></thead><tbody>` +
+    `<div class="detalle-cuerpo">` +
+    `<div class="tabla-envoltorio"><table class="tabla detalle-tabla" role="table">` +
+    `<thead role="rowgroup"><tr role="row"><th role="columnheader">Concepto</th><th role="columnheader" class="numero">${htmlFuente("solarman")}</th><th role="columnheader" class="numero">${htmlFuente("datadis")}</th><th role="columnheader" class="numero">${htmlFuente("factura")}</th></tr></thead><tbody role="rowgroup">` +
     conceptos
-      .map(([etiqueta, propio, contador, factura]) => `<tr><td>${etiqueta}</td>${dato(propio)}${dato(contador)}${dato(factura)}</tr>`)
+      .map(
+        ([etiqueta, propio, contador, factura]) =>
+          `<tr role="row"><th role="rowheader" scope="row">${etiqueta}</th>${dato(propio, "Solarman")}${dato(contador, "datadis")}${dato(factura, "Factura")}</tr>`
+      )
       .join("") +
     `</tbody></table></div>` +
     (fila.detalle?.length
-      ? `<h4>Día a día, según tu instalación</h4><div class="lienzo medio"><canvas id="detalleDiario"></canvas></div>`
-      : "");
+      ? `<div class="detalle-grafica"><h4>Día a día, según tu instalación</h4>` +
+        `<div class="leyenda">${clave("Producción", COLORES.produccion)}${clave("Comprado", COLORES.importada)}${clave("Vertido", COLORES.exportada)}</div>` +
+        `<div class="lienzo medio"><canvas id="detalleDiario"></canvas></div></div>`
+      : "") +
+    `</div>`;
 
   if (fila.detalle?.length) {
     barrasAgrupadas($("detalleDiario"), {
@@ -653,7 +728,10 @@ function pintarDetalleMes(mes) {
       ],
     });
   }
-  caja.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  if (desplazar) {
+    const quieto = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    caja.scrollIntoView({ behavior: quieto ? "auto" : "smooth", block: "nearest" });
+  }
 }
 
 function pintarGraficaHistorico(filas) {
@@ -662,17 +740,18 @@ function pintarGraficaHistorico(filas) {
   $("leyendaHistorico").hidden = filas.length < 2;
   if (filas.length < 2) return;
 
+  // Cada fuente lleva el color de su etiqueta de procedencia; la factura (dinero) va en --texto-2.
   leyenda("leyendaHistorico", [
-    ["Comprado según tu instalación", COLORES.descarga],
-    ["Comprado según el contador", COLORES.produccion],
-    ["Comprado según la factura", COLORES.importada],
+    ["Comprado según tu instalación", COLORES.produccion],
+    ["Comprado según el contador", COLORES.carga],
+    ["Comprado según la factura", COLORES.importe],
   ]);
   barrasAgrupadas($("graficaHistorico"), {
     etiquetas: filas.map((f) => nombreMes(f.mes).split(" ")[0]),
     series: [
-      { nombre: "Instalación", color: COLORES.descarga, valores: filas.map((f) => f.medido?.total ?? 0) },
-      { nombre: "Contador", color: COLORES.produccion, valores: filas.map((f) => f.contador?.total ?? 0) },
-      { nombre: "Factura", color: COLORES.importada, valores: filas.map((f) => f.factura?.total ?? 0) },
+      { nombre: "Instalación", color: COLORES.produccion, valores: filas.map((f) => f.medido?.total ?? 0) },
+      { nombre: "Contador", color: COLORES.carga, valores: filas.map((f) => f.contador?.total ?? 0) },
+      { nombre: "Factura", color: COLORES.importe, valores: filas.map((f) => f.factura?.total ?? 0) },
     ],
   });
 }
