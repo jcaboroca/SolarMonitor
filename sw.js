@@ -1,7 +1,7 @@
 // Los ficheros del programa se piden a la red primero para que una versión nueva
 // entre sin trucos; las librerías de vendor van desde memoria porque no cambian.
 
-const CACHE = "solar-monitor-v42";
+const CACHE = "solar-monitor-v43";
 const BASE = [
   "./",
   "./index.html",
@@ -40,9 +40,6 @@ const BASE = [
   "./assets/icono.svg",
   "./assets/icono-maskable.svg",
   "./assets/icono-180.png",
-  "./assets/icono-192.png",
-  "./assets/icono-512.png",
-  "./assets/icono-maskable-512.png",
 ];
 
 self.addEventListener("install", (evento) => {

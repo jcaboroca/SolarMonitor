@@ -59,14 +59,15 @@ test("los dos SVG del icono son el instrumento: horizonte, pista del arco, rayos
   }
 });
 
-test("el service worker guarda los iconos nuevos, anual.js y lectura.js y sube la caché a v42", () => {
+test("el service worker guarda los SVG y el apple-touch-icon, anual.js y lectura.js, no los PNG del manifest, y sube la caché a v43 o posterior", () => {
   const { CACHE, BASE } = constantesSw();
-  assert.equal(CACHE, "solar-monitor-v42");
-  for (const entrada of [
-    "./assets/icono.svg", "./assets/icono-maskable.svg", "./assets/icono-180.png", "./assets/icono-192.png",
-    "./assets/icono-512.png", "./assets/icono-maskable-512.png", "./js/anual.js", "./js/lectura.js",
-  ]) {
+  assert.ok(Number(CACHE.match(/v(\d+)$/)[1]) >= 43, CACHE);
+  for (const entrada of ["./assets/icono.svg", "./assets/icono-maskable.svg", "./assets/icono-180.png", "./js/anual.js", "./js/lectura.js"]) {
     assert.ok(BASE.includes(entrada), entrada);
+  }
+  // Los PNG del manifest los pide el sistema al instalar la app; no hacen falta sin conexión (122 KB fuera de la instalación del SW)
+  for (const png of ["./assets/icono-192.png", "./assets/icono-512.png", "./assets/icono-maskable-512.png"]) {
+    assert.ok(!BASE.includes(png), png);
   }
 });
 
