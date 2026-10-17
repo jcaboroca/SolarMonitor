@@ -6,7 +6,9 @@ const FUENTE = "500 11px 'Plex Mono', ui-monospace, monospace";
 // Los colores salen de los tokens de styles.css (§1). El respaldo solo se usa si
 // el CSS aún no está aplicado, y una prueba comprueba que coincide con :root.
 const RESPALDO = {
+  "--fondo": "#14110E",
   "--linea": "#2E2822",
+  "--escala": "#74685A",
   "--texto": "#EEE7DB",
   "--texto-3": "#9A8F80",
   "--sol": "#EBC25E",
@@ -95,11 +97,68 @@ function horaCorta(fecha) {
   return `${String(fecha.getHours()).padStart(2, "0")}:${String(fecha.getMinutes()).padStart(2, "0")}`;
 }
 
+// Marca de un momento (§5.5.2): índice, o tramo {desde, hasta} en ms o Date.
+function tramoDe(marca, instantes) {
+  if (marca == null) return null;
+  if (typeof marca === "number") return instantes[marca] == null ? null : { desde: instantes[marca], hasta: null };
+  const desde = +marca.desde;
+  const hasta = marca.hasta == null ? null : +marca.hasta;
+  return Number.isFinite(desde) ? { desde, hasta: Number.isFinite(hasta) && hasta > desde ? hasta : null } : null;
+}
+
+// Cursor del momento: lo que queda después se atenúa con el fondo; un tramo lleva una regla arriba y su fin.
+function pintarMarca(ctx, caja, aX, tramo) {
+  if (!tramo) return;
+  const x0 = Math.min(Math.max(aX(tramo.desde), caja.x0), caja.x1);
+  const x1 = tramo.hasta == null ? x0 : Math.min(Math.max(aX(tramo.hasta), caja.x0), caja.x1);
+  ctx.fillStyle = token("--fondo");
+  ctx.globalAlpha = 0.62;
+  ctx.fillRect(x1, caja.y0, caja.x1 - x1, caja.y1 - caja.y0);
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = token("--sol");
+  if (x1 > x0) {
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(Math.round(x1) + 0.5, caja.y0);
+    ctx.lineTo(Math.round(x1) + 0.5, caja.y1);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x0, caja.y0 + 1);
+    ctx.lineTo(x1, caja.y0 + 1);
+    ctx.stroke();
+  }
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(Math.round(x0) + 0.5, caja.y0);
+  ctx.lineTo(Math.round(x0) + 0.5, caja.y1);
+  ctx.stroke();
+}
+
+// Marcas de 6 px bajo el eje x en cada momento: la activa en --sol, el resto en --escala.
+function pintarMarcas(ctx, caja, aX, instantes, marcas, tramo) {
+  for (const { indice, activa } of marcas) {
+    const t = instantes[indice];
+    if (t == null) continue;
+    const x = Math.round(aX(t)) + 0.5;
+    ctx.strokeStyle = token(activa || (tramo && tramo.desde === t) ? "--sol" : "--escala");
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, caja.y1 + 1);
+    ctx.lineTo(x, caja.y1 + 7);
+    ctx.stroke();
+  }
+}
+
 /**
  * Área apilada sobre el tiempo con líneas superpuestas y cursor de datos.
  * capas: [{ clave, nombre, color, valores }] en las mismas posiciones que instantes.
+ * Devuelve { marcar(indice | {desde, hasta} | null) } para el relato (§5.5.2).
  */
-export function areaApilada(canvas, { instantes, capas, lineas = [], unidad = "W" }) {
+export function areaApilada(canvas, { instantes, capas, lineas = [], unidad = "W", marcas = [] }) {
+  let seleccion = null;
   const pintar = (indiceCursor) => {
     const { ctx, caja } = preparar(canvas);
     if (!instantes.length) return;
@@ -130,7 +189,7 @@ export function areaApilada(canvas, { instantes, capas, lineas = [], unidad = "W
       const marca = new Date(t0);
       marca.setHours(hora, 0, 0, 0);
       if (marca.getTime() < t0 || marca.getTime() > t1) continue;
-      ctx.fillText(`${String(hora).padStart(2, "0")}h`, aX(marca.getTime()), caja.y1 + 6);
+      ctx.fillText(`${String(hora).padStart(2, "0")}h`, aX(marca.getTime()), caja.y1 + (marcas.length ? 10 : 6));
     }
 
     for (const capa of capas) {
@@ -155,6 +214,10 @@ export function areaApilada(canvas, { instantes, capas, lineas = [], unidad = "W
       ctx.stroke();
       ctx.setLineDash([]);
     }
+
+    const tramo = tramoDe(seleccion, instantes);
+    pintarMarca(ctx, caja, aX, tramo);
+    pintarMarcas(ctx, caja, aX, instantes, marcas, tramo);
 
     if (indiceCursor != null) {
       const x = aX(instantes[indiceCursor]);
@@ -206,6 +269,13 @@ export function areaApilada(canvas, { instantes, capas, lineas = [], unidad = "W
     const x = evento.clientX - marco.left;
     globo.style.left = `${Math.min(Math.max(x + 12, 4), marco.width - ancho - 4)}px`;
     globo.style.top = `${Math.max(evento.clientY - marco.top - globo.offsetHeight - 12, 4)}px`;
+  };
+
+  return {
+    marcar(nueva) {
+      seleccion = nueva;
+      pintar(null);
+    },
   };
 }
 
@@ -321,38 +391,50 @@ export function mapaCalor(canvas, { dias, matriz, color = COLORES.importada }) {
   });
 }
 
-/** Línea simple sobre el tiempo, para el nivel de batería. */
+/** Línea simple sobre el tiempo, para el nivel de batería. Devuelve { marcar } como areaApilada. */
 export function lineaSimple(canvas, { instantes, valores, color = COLORES.soc, unidad = "%", maximoFijo }) {
-  const { ctx, caja } = preparar(canvas);
-  if (!instantes.length) return;
-  const maximo = maximoFijo ?? Math.max(1, ...valores);
-  ejeVertical(ctx, caja, 0, maximo, (v) => `${Math.round(v)}${unidad}`);
+  let seleccion = null;
+  const pintar = () => {
+    const { ctx, caja } = preparar(canvas);
+    if (!instantes.length) return;
+    const maximo = maximoFijo ?? Math.max(1, ...valores);
+    ejeVertical(ctx, caja, 0, maximo, (v) => `${Math.round(v)}${unidad}`);
 
-  const t0 = instantes[0];
-  const t1 = instantes[instantes.length - 1] || t0 + 1;
-  const aX = (t) => caja.x0 + ((t - t0) / (t1 - t0 || 1)) * (caja.x1 - caja.x0);
-  const aY = (v) => caja.y1 - (v / maximo) * (caja.y1 - caja.y0);
+    const t0 = instantes[0];
+    const t1 = instantes[instantes.length - 1] || t0 + 1;
+    const aX = (t) => caja.x0 + ((t - t0) / (t1 - t0 || 1)) * (caja.x1 - caja.x0);
+    const aY = (v) => caja.y1 - (v / maximo) * (caja.y1 - caja.y0);
 
-  ctx.beginPath();
-  instantes.forEach((t, i) => (i ? ctx.lineTo(aX(t), aY(valores[i] || 0)) : ctx.moveTo(aX(t), aY(valores[i] || 0))));
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-  ctx.lineTo(aX(t1), caja.y1);
-  ctx.lineTo(aX(t0), caja.y1);
-  ctx.closePath();
-  ctx.fillStyle = color;
-  ctx.globalAlpha = 0.13;
-  ctx.fill();
-  ctx.globalAlpha = 1;
+    ctx.beginPath();
+    instantes.forEach((t, i) => (i ? ctx.lineTo(aX(t), aY(valores[i] || 0)) : ctx.moveTo(aX(t), aY(valores[i] || 0))));
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.lineTo(aX(t1), caja.y1);
+    ctx.lineTo(aX(t0), caja.y1);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.13;
+    ctx.fill();
+    ctx.globalAlpha = 1;
 
-  ctx.fillStyle = textoEje();
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-  for (let hora = 0; hora <= 24; hora += 4) {
-    const marca = new Date(t0);
-    marca.setHours(hora, 0, 0, 0);
-    if (marca.getTime() < t0 || marca.getTime() > t1) continue;
-    ctx.fillText(`${String(hora).padStart(2, "0")}h`, aX(marca.getTime()), caja.y1 + 6);
-  }
+    ctx.fillStyle = textoEje();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    for (let hora = 0; hora <= 24; hora += 4) {
+      const marcaHora = new Date(t0);
+      marcaHora.setHours(hora, 0, 0, 0);
+      if (marcaHora.getTime() < t0 || marcaHora.getTime() > t1) continue;
+      ctx.fillText(`${String(hora).padStart(2, "0")}h`, aX(marcaHora.getTime()), caja.y1 + 6);
+    }
+    pintarMarca(ctx, caja, aX, tramoDe(seleccion, instantes));
+  };
+
+  pintar();
+  return {
+    marcar(nueva) {
+      seleccion = nueva;
+      pintar();
+    },
+  };
 }

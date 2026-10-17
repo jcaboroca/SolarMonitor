@@ -5,12 +5,13 @@ import {
   serializarSerie, deserializarSerie,
 } from "./datos.js";
 import { textoDelPdf, interpretarFactura, revisarFactura, lecturasFrenteAFacturado } from "./factura.js";
-import { areaApilada, barrasApiladas, barrasAgrupadas, mapaCalor, lineaSimple, COLORES } from "./graficas.js";
+import { barrasApiladas, barrasAgrupadas, mapaCalor, COLORES } from "./graficas.js";
 import { leerHistorico, guardarMes, borrarMes, importarHistorico, exportarTodo, analizarHistorico, mesDominante, nombreMes, leerCurvas, guardarCurva, leerSerie, guardarSerie } from "./historico.js";
 import { hayNube, urlNube, claveMaestra, configurarNube, bajarDeNube, subirANube, sincronizarPronto, pedirNube } from "./nube.js";
 import * as datadis from "./datadis.js";
 import { iniciarAhora, pintarAhora } from "./ahora.js";
 import { htmlIcono, htmlFuente } from "./iconos.js";
+import { pintarRelato } from "./relato-vista.js";
 
 const $ = (id) => document.getElementById(id);
 const estado = { cabeceras: [], filas: [], roles: [], unidades: [], serie: null, dias: [], factura: null };
@@ -711,39 +712,12 @@ function leyenda(elemento, entradas) {
   $(elemento).innerHTML = entradas.map(([nombre, color]) => `<span><i style="background:${color}"></i>${nombre}</span>`).join("");
 }
 
+// El día se cuenta como relato (§5.5): momentos, escenario fijo y vista compacta viven en relato-vista.js.
 function pintarDia() {
   const clave = $("selectorDia").value;
   const registros = estado.serie.registros.filter((p) => claveDia(p.instante) === clave);
   if (!registros.length) return;
-  const instantes = registros.map((p) => p.instante.getTime());
-
-  leyenda("leyendaDia", [
-    ["Sol → casa", COLORES.produccion],
-    ["Batería → casa", COLORES.descarga],
-    ["Red → casa", COLORES.importada],
-    ["Producción solar total", COLORES.produccionTotal],
-    ["Consumo total", COLORES.consumo],
-  ]);
-
-  areaApilada($("graficaDia"), {
-    instantes,
-    capas: [
-      { clave: "solarDirecta", nombre: "Sol → casa", color: COLORES.produccion, valores: registros.map((p) => p.solarDirecta || 0) },
-      { clave: "descarga", nombre: "Batería → casa", color: COLORES.descarga, valores: registros.map((p) => p.descarga || 0) },
-      { clave: "importada", nombre: "Red → casa", color: COLORES.importada, valores: registros.map((p) => p.importada || 0) },
-    ],
-    lineas: [
-      { nombre: "Producción solar", color: COLORES.produccionTotal, discontinua: true, valores: registros.map((p) => p.produccion || 0) },
-      { nombre: "Consumo", color: COLORES.consumo, valores: registros.map((p) => p.consumo || 0) },
-    ],
-  });
-
-  const tieneSoc = registros.some((p) => p.soc != null);
-  $("tituloBateria").hidden = !tieneSoc;
-  $("graficaBateria").parentElement.hidden = !tieneSoc;
-  if (tieneSoc) {
-    lineaSimple($("graficaBateria"), { instantes, valores: registros.map((p) => p.soc || 0), maximoFijo: 100 });
-  }
+  pintarRelato({ clave, registros, serie: estado.serie, festivos: estado.festivos });
 }
 
 function pintarMes() {

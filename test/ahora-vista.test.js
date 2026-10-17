@@ -16,10 +16,10 @@ function constantesSw() {
   return vm.runInContext("({ CACHE, BASE })", contexto);
 }
 
-test("el service worker guarda js/arco.js y sube la caché a v40", () => {
+test("el service worker guarda js/arco.js y sube la caché a v40 o posterior", () => {
   const { CACHE, BASE } = constantesSw();
   assert.ok(BASE.includes("./js/arco.js"));
-  assert.equal(CACHE, "solar-monitor-v40");
+  assert.ok(Number(CACHE.match(/^solar-monitor-v(\d+)$/)?.[1]) >= 40, CACHE);
 });
 
 test("todo id que piden ahora.js y arco.js existe en index.html", () => {
