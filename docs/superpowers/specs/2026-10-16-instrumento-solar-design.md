@@ -1,6 +1,6 @@
 # Instrumento solar — especificación visual y técnica
 
-**Estado: EN EJECUCIÓN (F1–F4)** · 17-oct-2026 · revisión 4. **La enmienda del §12 prevalece sobre lo que contradiga** (presupuesto y dirección del prototipo de *Ahora*). Revisión 3: Consolida la rev. 2 aprobada y la
+**Estado: F1–F4 PUBLICADAS** · 17-oct-2026 · revisión 4 (registro en `docs/superpowers/medidas/2026-10-17-publicacion-f1-f4.md`). **La enmienda del §12 prevalece sobre lo que contradiga** (presupuesto y dirección del prototipo de *Ahora*). Revisión 3: Consolida la rev. 2 aprobada y la
 auditoría C1–C7 (presupuesto, movimiento reducido, tareas largas, service worker, cambio
 horario y trazabilidad estructurada), con las decisiones D1–D7 cerradas. **«Lista para F1»
 significa que se puede empezar F1. No significa que F1 esté implementada ni validada.** Es
