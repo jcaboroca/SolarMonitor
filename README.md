@@ -18,6 +18,11 @@ cargada.
 4. Se comparan los kWh comprados a la red por periodo (P1/P2/P3 de la 2.0TD) y
    los excedentes vertidos.
 
+Si el PDF y el datalogger son de meses distintos, se avisa y no se compara ni
+se sobrescribe la factura del mes abierto. Carga los datos del mes del PDF para
+guardarlo. Los valores introducidos a mano quedan ligados a su mes y no se
+arrastran al cambiar de fichero.
+
 Los festivos nacionales cuentan como valle: se escriben en el campo «Festivos
 del mes» (`24/06, 15/08`) porque no hay ninguna lista fija metida en el código.
 
@@ -89,6 +94,11 @@ La misma clave en cada dispositivo.
 
 Al traer de la nube se fusiona campo a campo: un hueco nunca pisa un dato, así que
 sincronizar desde un dispositivo con menos información no borra la que ya había.
+
+Las descargas de Datadis también se sincronizan automáticamente al terminar,
+incluso si solo se pudo recuperar una parte del rango solicitado. Si falla la
+subida, se muestra el error y los datos permanecen guardados en el navegador;
+se puede reintentar con «Subir ahora».
 
 > Si se pierde la clave maestra, lo que haya en la nube es irrecuperable. Conviene
 > guardarla en el gestor de contraseñas y conservar además la copia en fichero.

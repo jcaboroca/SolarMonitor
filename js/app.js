@@ -6,7 +6,7 @@ import {
 } from "./datos.js";
 import { textoDelPdf, interpretarFactura, revisarFactura, lecturasFrenteAFacturado } from "./factura.js";
 import { barrasApiladas, barrasAgrupadas, mapaCalor, COLORES } from "./graficas.js";
-import { leerHistorico, guardarMes, borrarMes, importarHistorico, exportarTodo, analizarHistorico, mesDominante, nombreMes, leerCurvas, guardarCurva, leerSerie, guardarSerie } from "./historico.js";
+import { leerHistorico, guardarMes, borrarMes, importarHistorico, exportarTodo, analizarHistorico, mesDominante, mesDeFactura, nombreMes, leerCurvas, guardarCurva, leerSerie, guardarSerie } from "./historico.js";
 import { hayNube, urlNube, claveMaestra, configurarNube, bajarDeNube, subirANube, sincronizarPronto, pedirNube } from "./nube.js";
 import * as datadis from "./datadis.js";
 import { iniciarAhora, pintarAhora } from "./ahora.js";
@@ -16,7 +16,7 @@ import { htmlRegla, htmlCifra } from "./lectura.js";
 import { modeloAnual, pintarAnual, resaltarMes, htmlLecturaAnual, htmlLeyendaAnual } from "./anual.js";
 
 const $ = (id) => document.getElementById(id);
-const estado = { cabeceras: [], filas: [], roles: [], unidades: [], serie: null, dias: [], factura: null };
+const estado = { cabeceras: [], filas: [], roles: [], unidades: [], serie: null, dias: [], factura: null, mesFactura: null, mesComparacion: null };
 
 const numero = (valor, decimales = 1) =>
   Number.isFinite(valor) ? valor.toLocaleString("es-ES", { minimumFractionDigits: decimales, maximumFractionDigits: decimales }) : "—";
@@ -94,6 +94,7 @@ async function cargarFactura(fichero) {
     }
     estado.factura = interpretarFactura(texto);
     estado.factura.texto = texto;
+    estado.mesFactura = mesDeFactura(estado.factura) || mesDominante(estado.dias.map((d) => d.fecha));
     marca.textContent = `${fichero.name} · datos extraídos`;
     pintarComparacion(true);
     pintarRevision();
@@ -103,6 +104,7 @@ async function cargarFactura(fichero) {
     marca.className = "estado error";
     marca.textContent = error.message;
     estado.factura = estado.factura || { consumo: {}, precio: {}, texto: "" };
+    estado.mesFactura ??= mesDominante(estado.dias.map((d) => d.fecha));
     pintarComparacion();
   }
 }
@@ -252,6 +254,14 @@ function pintarComparacion(refrescarFactura = false) {
   estado.medido = medido;
 
   const leido = estado.factura;
+  const mesSolarman = mesDominante(estado.dias.map((d) => d.fecha));
+  if (leido) estado.mesFactura ??= mesDeFactura(leido) || mesSolarman;
+  const mesFactura = mesDeFactura(leido) || estado.mesFactura;
+  const distintos = Boolean(leido && mesFactura !== mesSolarman);
+  const anteriores = !refrescarFactura && estado.mesComparacion === mesSolarman
+    ? Object.fromEntries(CONCEPTOS.map((c) => [c.clave, valorFactura(c.clave)]))
+    : {};
+  estado.mesComparacion = mesSolarman;
   const deLaFactura = {
     P1: leido?.consumo?.P1 ?? null,
     P2: leido?.consumo?.P2 ?? null,
@@ -263,14 +273,14 @@ function pintarComparacion(refrescarFactura = false) {
   const cuerpo = $("tablaFactura").querySelector("tbody");
   cuerpo.textContent = "";
   for (const concepto of CONCEPTOS) {
-    const anterior = refrescarFactura ? null : valorFactura(concepto.clave);
+    const anterior = anteriores[concepto.clave];
     const valor = anterior ?? deLaFactura[concepto.clave];
     const fila = document.createElement("tr");
     fila.className = concepto.clave === "total" ? "total" : "";
     fila.setAttribute("role", "row");
     fila.innerHTML =
       `<th role="rowheader" scope="row">${concepto.etiqueta}</th>` +
-      `<td role="cell" class="numero" data-rotulo="Factura"><input type="number" step="0.01" min="0" inputmode="decimal" data-clave="${concepto.clave}" value="${valor ?? ""}" aria-label="${concepto.etiqueta} según la factura"> kWh</td>` +
+      `<td role="cell" class="numero" data-rotulo="Factura"><input type="number" step="0.01" min="0" inputmode="decimal" data-clave="${concepto.clave}" value="${valor ?? ""}" ${distintos ? "disabled" : ""} aria-label="${concepto.etiqueta} según la factura"> kWh</td>` +
       `<td role="cell" class="numero" data-rotulo="Solarman">${numero(medido[concepto.clave])} kWh</td>` +
       `<td role="cell" class="numero" data-rotulo="Diferencia" data-desvio="${concepto.clave}"></td>` +
       `<td role="cell" class="regla" data-regla="${concepto.clave}"></td>`;
@@ -293,11 +303,12 @@ const fechaCorta = (valor) => new Date(valor).toLocaleDateString("es-ES", { day:
 function pintarOrigenComparacion(f) {
   const mesSolarman = mesDominante(estado.dias.map((d) => d.fecha));
   const partes = [`${htmlFuente("solarman")} ${mesSolarman ? nombreMes(mesSolarman) : "—"}`];
-  let mesFactura = null;
+  const mesFactura = mesDeFactura(f) || estado.mesFactura;
   if (f?.desde && f?.hasta) {
     const desde = new Date(f.desde), hasta = new Date(f.hasta);
-    mesFactura = mesDominante([new Date((desde.getTime() + hasta.getTime()) / 2)]);
     partes.unshift(`${htmlFuente("factura")} del ${fechaCorta(desde)} al ${fechaCorta(hasta)}`);
+  } else if (f) {
+    partes.unshift(`${htmlFuente("factura")} sin periodo detectado · valores manuales de ${mesFactura ? nombreMes(mesFactura) : "mes pendiente"}`);
   } else {
     partes.unshift(`${htmlFuente("factura")} sin PDF cargado`);
   }
@@ -311,12 +322,14 @@ function pintarOrigenComparacion(f) {
 
 function pintarDesvios() {
   const medido = estado.medido;
+  const mesSolarman = mesDominante(estado.dias.map((d) => d.fecha));
+  const distintos = estado.factura && (mesDeFactura(estado.factura) || estado.mesFactura) !== mesSolarman;
   let veredicto = null;
 
   for (const concepto of CONCEPTOS) {
     const celda = document.querySelector(`#tablaFactura [data-desvio="${concepto.clave}"]`);
     const regla = document.querySelector(`#tablaFactura [data-regla="${concepto.clave}"]`);
-    const facturado = valorFactura(concepto.clave);
+    const facturado = distintos ? null : valorFactura(concepto.clave);
     if (facturado == null) {
       celda.textContent = "—";
       celda.className = "numero";
@@ -333,6 +346,11 @@ function pintarDesvios() {
   }
 
   const caja = $("veredicto");
+  if (distintos) {
+    caja.className = "veredicto regular";
+    caja.textContent = "La factura y Solarman son de meses distintos: no se comparan ni se guarda esta factura en el mes de esos datos. Carga los datos del mismo mes que la factura.";
+    return;
+  }
   if (veredicto == null) {
     caja.className = "veredicto";
     caja.textContent = "Introduce los kWh que aparecen en la factura para comparar.";
@@ -486,7 +504,8 @@ function componerMes() {
   const t = totales();
   const f = estado.factura;
   const previo = leerHistorico().find((m) => m.mes === mes);
-  const hayFactura = Boolean(f) || CONCEPTOS.some((c) => valorFactura(c.clave) != null);
+  const coincide = f ? (mesDeFactura(f) || estado.mesFactura) === mes : estado.mesComparacion === mes;
+  const hayFactura = coincide && (Boolean(f) || CONCEPTOS.some((c) => valorFactura(c.clave) != null));
   return {
     ...previo,
     mes,
@@ -510,6 +529,10 @@ function componerMes() {
     ]),
     factura: hayFactura
       ? {
+          mes,
+          desde: f?.desde ? new Date(f.desde).toISOString() : null,
+          hasta: f?.hasta ? new Date(f.hasta).toISOString() : null,
+          comercializadora: f?.comercializadora ?? null,
           P1: valorFactura("P1"),
           P2: valorFactura("P2"),
           P3: valorFactura("P3"),
@@ -532,8 +555,16 @@ function guardarSolo() {
   if (mes) {
     guardarMes(mes);
     guardarSerie(mes.mes, serializarSerie(estado.serie));
-    sincronizarPronto((error) => marcarNube(error ? `No se ha podido subir: ${error.message}` : "Sincronizado"));
+    sincronizarGuardado();
   }
+}
+
+function sincronizarGuardado() {
+  sincronizarPronto((error) => {
+    const mensaje = error ? `No se ha podido subir: ${error.message}` : "Sincronizado";
+    marcarNube(mensaje);
+    if (error) avisar(mensaje);
+  });
 }
 
 function pintarHistorico() {
@@ -971,6 +1002,7 @@ async function bajarDeDatadis() {
   } else {
     marcaDatadis("Datadis no ha devuelto datos de ningún mes de ese rango.", "error");
   }
+  if (bajados) sincronizarGuardado();
   pintarHistorico();
   refrescarMesesContador();
 }
@@ -1187,6 +1219,7 @@ $("guardarMes").addEventListener("click", () => {
   const registro = componerMes();
   if (!registro) return;
   guardarMes(registro);
+  sincronizarGuardado();
   pintarHistorico();
   avisar(`Guardado ${nombreMes(registro.mes)}. Cuando tengas varios meses, la tabla enseña cuál se sale del patrón.`);
 });

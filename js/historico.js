@@ -177,6 +177,18 @@ export function mesDominante(fechas) {
   return mejor?.[0] ?? null;
 }
 
+export function mesDeFactura(factura) {
+  if (!factura?.desde || !factura?.hasta) return null;
+  const desde = new Date(factura.desde), hasta = new Date(factura.hasta);
+  if (!Number.isFinite(desde.getTime()) || !Number.isFinite(hasta.getTime()) || hasta < desde) return null;
+  const dias = [];
+  // Octopus excluye la fecha final; los otros formatos incluyen ambos extremos.
+  for (const dia = new Date(desde); factura.comercializadora === "Octopus" ? dia < hasta : dia <= hasta; dia.setDate(dia.getDate() + 1)) {
+    dias.push(new Date(dia));
+  }
+  return mesDominante(dias);
+}
+
 const mediana = (valores) => {
   const orden = [...valores].sort((a, b) => a - b);
   if (!orden.length) return null;
