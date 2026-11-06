@@ -23,8 +23,14 @@ se sobrescribe la factura del mes abierto. Carga los datos del mes del PDF para
 guardarlo. Los valores introducidos a mano quedan ligados a su mes y no se
 arrastran al cambiar de fichero.
 
-Los festivos nacionales cuentan como valle: se escriben en el campo «Festivos
-del mes» (`24/06, 15/08`) porque no hay ninguna lista fija metida en el código.
+Los festivos nacionales fijos y el 6 de enero se aplican automáticamente como
+valle según la 2.0TD. «Festivos adicionales de tu tarifa» permite excepciones
+en formato `dd/mm/aaaa`; los festivos locales no son valle por defecto.
+
+El veredicto compara la factura con **Datadis del mismo intervalo**, solo si
+están todas las horas y son reales. Una factura parcial se compara únicamente
+con sus fechas (la fecha final de Octopus es exclusiva). «Calculada» en una
+lectura impresa no equivale a consumo horario estimado.
 
 ## Detalles
 
@@ -34,6 +40,13 @@ del mes» (`24/06, 15/08`) porque no hay ninguna lista fija metida en el código
   hueco en los datos no se rellena: se contabiliza como un intervalo normal.
 - Es normal una diferencia pequeña con la factura: el datalogger mide en el
   inversor y el contador mide en la acometida.
+- Se muestra cobertura horaria, no solo días con alguna muestra; el cambio de
+  hora de octubre conserva las 25 horas. Solarman incompleto no permite culpar
+  al contador ni validar una factura.
+- Un dato ausente no se representa como cero. Los gráficos de consumo separan
+  lo atribuible a la casa de las compras brutas (que pueden incluir pérdidas
+  y carga de batería). Los saltos bruscos de SOC se señalan como cambios del
+  nivel indicado, sin diagnosticar una avería ni una carga física.
 
 ## Estructura
 
@@ -92,8 +105,12 @@ Después, en la web: «Mes a mes» → «Sincronizar entre dispositivos», pegar
 dirección del Worker y la **clave maestra** (la otra línea que imprime el script).
 La misma clave en cada dispositivo.
 
-Al traer de la nube se fusiona campo a campo: un hueco nunca pisa un dato, así que
-sincronizar desde un dispositivo con menos información no borra la que ya había.
+Antes de subir se lee y fusiona la copia remota. Las revisiones más recientes
+prevalecen por hora; una curva corregida actualiza sus horas aunque conserve la misma
+longitud y una descarga parcial no borra las otras horas. Los resúmenes se
+recalculan desde la curva. Los borrados se conservan para no resucitar meses
+desde dispositivos antiguos. Si no se puede leer o descifrar la nube, no se
+sobrescribe con una copia local incompleta.
 
 Las descargas de Datadis también se sincronizan automáticamente al terminar,
 incluso si solo se pudo recuperar una parte del rango solicitado. Si falla la

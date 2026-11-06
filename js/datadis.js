@@ -1,5 +1,6 @@
 // Cliente de la API privada de datadis. Se llama desde el navegador del usuario:
 // la contraseña sirve para pedir el token y no se guarda en ningún sitio.
+import { normalizarInstantes } from "./datos.js";
 
 const AUTENTICAR = "https://datadis.es/nikola-auth/tokens/login";
 const BASE = "https://datadis.es/api-private/api";
@@ -106,7 +107,7 @@ export async function curvaHoraria(cups, codigoDistribuidora, desde, hasta, tipo
       real: punto.obtainMethod === "Real",
     });
   }
-  return registros.sort((a, b) => a.instante - b.instante);
+  return normalizarInstantes(registros);
 }
 
 export async function potenciasMaximas(cups, codigoDistribuidora, desde, hasta) {

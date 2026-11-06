@@ -293,10 +293,11 @@
         <div class="opciones campos-fila">
           <label class="check"><input type="checkbox" id="invertirRed"> La red está al revés (compra y vertido cambiados)</label>
           <label class="check"><input type="checkbox" id="invertirBateria"> La batería está al revés (carga y descarga cambiadas)</label>
-          <label>Festivos del mes
-            <input type="text" id="festivos" placeholder="24/06, 15/08" autocomplete="off">
+          <label>Festivos adicionales de tu tarifa
+            <input type="text" id="festivos" placeholder="dd/mm/aaaa" autocomplete="off">
           </label>
         </div>
+        <p class="ayuda">Los festivos nacionales fijos y el 6 de enero se aplican automáticamente según la 2.0TD. Los festivos locales no son valle por defecto.</p>
         <button class="btn primario" type="button" id="recalcular">Recalcular</button>
       </details>
     </section>
@@ -327,6 +328,7 @@
         <span class="fuente solarman"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-sol"></use></svg>Solarman</span> es lo que midió tu instalación en ese mes.
       </p>
       <p class="origen" id="origenComparacion"></p>
+      <p class="ayuda">La tabla muestra diferencias orientativas con Solarman, no pruebas de un cobro incorrecto. La factura se valida contra Datadis solo cuando hay horas reales de todo su periodo.</p>
       <div class="tabla-envoltorio acta-envoltorio">
         <table class="tabla acta" id="tablaFactura" role="table">
           <thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col">Concepto</th><th role="columnheader" scope="col" class="numero"><span class="fuente factura"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-documento"></use></svg>Factura</span></th><th role="columnheader" scope="col" class="numero"><span class="fuente solarman"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-sol"></use></svg>Solarman</span></th><th role="columnheader" scope="col" class="numero">Diferencia</th><th role="columnheader" scope="col" class="regla-cabeza">Desvío</th></tr></thead>

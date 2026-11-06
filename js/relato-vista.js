@@ -6,6 +6,7 @@ import { areaApilada, lineaSimple, COLORES } from "./graficas.js";
 import { detectarMomentos } from "./relato.js";
 import { elementoCifra, formatear } from "./arco.js";
 import { htmlIcono } from "./iconos.js";
+import { repartoCasa } from "./datos.js";
 
 export const CLAVE_VISTA = "solar-monitor-vista-dia";
 const H = 3600000;
@@ -102,6 +103,7 @@ function pintarApertura() {
   } else {
     sub.replaceChildren();
   }
+  if (resultado.calidad.saltosSoc.length) sub.append(" El nivel indicado de batería tiene cambios bruscos; no bastan para diagnosticar una avería.");
   sub.hidden = !sub.childNodes.length;
 
   const filas = [
@@ -355,9 +357,9 @@ function pintarGraficas() {
   vista.grafica = areaApilada($("graficaDia"), {
     instantes,
     capas: [
-      { clave: "solarDirecta", nombre: "Sol → casa", color: COLORES.produccion, valores: registros.map((p) => p.solarDirecta || 0) },
-      { clave: "descarga", nombre: "Batería → casa", color: COLORES.descarga, valores: registros.map((p) => p.descarga || 0) },
-      { clave: "importada", nombre: "Red → casa", color: COLORES.importada, valores: registros.map((p) => p.importada || 0) },
+      { clave: "solarDirecta", nombre: "Sol → casa", color: COLORES.produccion, valores: registros.map((p) => repartoCasa(p).solarDirecta) },
+      { clave: "descarga", nombre: "Batería → casa", color: COLORES.descarga, valores: registros.map((p) => repartoCasa(p).descarga) },
+      { clave: "importada", nombre: "Red → casa", color: COLORES.importada, valores: registros.map((p) => repartoCasa(p).importada) },
     ],
     lineas: [
       { nombre: "Producción solar", color: COLORES.produccionTotal, discontinua: true, valores: registros.map((p) => p.produccion || 0) },

@@ -92,10 +92,35 @@ test("un PDF de otro mes tampoco crea una factura incorrecta si no habia una ant
   assert.deepEqual(historico.leerHistorico()[0].factura, {});
 });
 
+test("guardar Solarman no vuelve a publicar una factura restaurada obsoleta", (t) => {
+  const app = cargarApp(t);
+  app.estado.factura = {
+    ...app.estado.factura, restaurada: true, consumoTotal: 100,
+    desde: new Date(2026, 8, 1), hasta: new Date(2026, 9, 1),
+  };
+  app.entradas.total = "100";
+  historico.guardarMes({ mes: "2026-09", factura: { total: 200, importe: 50 } });
+  app.ejecutar("guardarSolo()");
+  assert.equal(historico.leerHistorico()[0].factura.total, 200);
+});
+
+test("la factura restaurada en pantalla sigue las revisiones del historico", (t) => {
+  const app = cargarApp(t);
+  app.estado.factura.restaurada = true;
+  historico.guardarMes({ mes: "2026-09", factura: { total: 200, importe: 50 } });
+  app.ejecutar("actualizarFacturaGuardada('2026-09')");
+  assert.equal(app.estado.factura.consumoTotal, 200);
+  assert.equal(app.estado.mesComparacion, null);
+  historico.guardarMes({ mes: "2026-09", factura: {}, facturaPendiente: "Falta el PDF" });
+  app.ejecutar("actualizarFacturaGuardada('2026-09')");
+  assert.equal(app.estado.factura, null);
+});
+
 test("la factura coincidente conserva su periodo para identificarla despues de restaurar", (t) => {
   const app = cargarApp(t);
   app.estado.dias[0].fecha = new Date(2026, 9, 1);
   app.estado.dias[0].clave = "2026-10-01";
+  app.estado.serie.registros[0].instante = app.estado.dias[0].fecha;
   app.estado.mesComparacion = "2026-10";
   app.ejecutar("guardarSolo()");
   const factura = historico.leerHistorico()[0].factura;
@@ -151,6 +176,18 @@ test("descargar Datadis sincroniza la curva recien guardada", async (t) => {
   assert.equal(app.subidas[0].curvas["2026-10"].length, 1);
   assert.equal(app.subidas[0].curvas["2026-10"][0][1], 0.4);
   assert.equal(app.elemento("bajarDatadis").disabled, false);
+});
+
+test("descargar de nuevo un mes borrado lo recrea tambien al sincronizar", async (t) => {
+  const app = cargarApp(t);
+  historico.guardarMes({ mes: "2026-10", factura: {} });
+  historico.borrarMes("2026-10");
+  const remoto = historico.paqueteActual();
+  prepararDatadis(app, [punto]);
+  await app.ejecutar("bajarDeDatadis()");
+  historico.fusionarPaquete(remoto);
+  assert.ok(historico.leerHistorico().some((m) => m.mes === "2026-10"));
+  assert.equal(historico.leerCurvas().get("2026-10").length, 1);
 });
 
 test("una descarga vacia no sube ni borra las curvas existentes", async (t) => {

@@ -329,6 +329,8 @@ export function barrasApiladas(canvas, { etiquetas, capas, unidad = "kWh" }) {
 export function barrasAgrupadas(canvas, { etiquetas, series, unidad = "kWh" }) {
   const { ctx, caja } = preparar(canvas);
   if (!etiquetas.length) return;
+  canvas.setAttribute("aria-label", etiquetas.map((e, i) => `${e}: ${series.map((s) =>
+    `${s.nombre} ${Number.isFinite(s.valores[i]) ? `${s.valores[i]} ${unidad}` : "sin datos"}`).join(", ")}`).join("; "));
 
   let maximo = 0;
   for (const serie of series) for (const valor of serie.valores) maximo = Math.max(maximo, valor || 0);
@@ -342,10 +344,15 @@ export function barrasAgrupadas(canvas, { etiquetas, series, unidad = "kWh" }) {
   series.forEach((serie, s) => {
     ctx.fillStyle = serie.color;
     for (let i = 0; i < etiquetas.length; i++) {
-      const valor = Math.max(serie.valores[i] || 0, 0);
-      if (!valor) continue;
       const centro = caja.x0 + i * anchoHueco + anchoHueco / 2;
       const x = centro + (s - series.length / 2) * anchoBarra;
+      if (!Number.isFinite(serie.valores[i])) {
+        ctx.textAlign = "center";
+        ctx.fillText("?", x + anchoBarra / 2, caja.y1 - 4);
+        continue;
+      }
+      const valor = Math.max(serie.valores[i], 0);
+      if (!valor) continue;
       const altura = (valor / maximo) * (caja.y1 - caja.y0);
       ctx.fillRect(x, caja.y1 - altura, anchoBarra - 1, altura);
     }
@@ -366,6 +373,7 @@ export function barrasAgrupadas(canvas, { etiquetas, series, unidad = "kWh" }) {
 export function mapaCalor(canvas, { dias, matriz, color = COLORES.importada }) {
   const { ctx, caja } = preparar(canvas);
   if (!dias.length) return;
+  canvas.setAttribute("aria-label", "Mapa horario: una celda vacía indica que no hay datos, no consumo cero. En el cambio de hora se suman ambas ocurrencias.");
 
   let maximo = 0;
   for (const columna of matriz) for (const valor of columna) maximo = Math.max(maximo, valor);
@@ -376,7 +384,8 @@ export function mapaCalor(canvas, { dias, matriz, color = COLORES.importada }) {
   ctx.fillStyle = color;
   for (let d = 0; d < dias.length; d++) {
     for (let h = 0; h < 24; h++) {
-      const intensidad = (matriz[d]?.[h] || 0) / maximo;
+      if (!Number.isFinite(matriz[d]?.[h])) continue;
+      const intensidad = matriz[d][h] / maximo;
       ctx.globalAlpha = 0.06 + intensidad * 0.94;
       ctx.fillRect(caja.x0 + d * anchoCelda, caja.y0 + h * altoCelda, Math.ceil(anchoCelda), Math.ceil(altoCelda));
     }

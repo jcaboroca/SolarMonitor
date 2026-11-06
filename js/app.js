@@ -3,8 +3,9 @@ import {
   ROLES, detectarRoles, unidadDeCabecera, construirSerie, energiaKwh,
   repartoPorPeriodo, resumenPorDia, claveDia, periodoTarifa,
   serializarSerie, deserializarSerie,
+  coberturaPeriodo, resumirContador,
 } from "./datos.js";
-import { textoDelPdf, interpretarFactura, revisarFactura, lecturasFrenteAFacturado } from "./factura.js";
+import { textoDelPdf, interpretarFactura, revisarFactura, lecturasFrenteAFacturado, periodoFactura, cotejarFactura, diagnosticoCotejo, diferenciaEnergia } from "./factura.js";
 import { barrasApiladas, barrasAgrupadas, mapaCalor, COLORES } from "./graficas.js";
 import { leerHistorico, guardarMes, borrarMes, importarHistorico, exportarTodo, analizarHistorico, mesDominante, mesDeFactura, nombreMes, leerCurvas, guardarCurva, leerSerie, guardarSerie } from "./historico.js";
 import { hayNube, urlNube, claveMaestra, configurarNube, bajarDeNube, subirANube, sincronizarPronto, pedirNube } from "./nube.js";
@@ -158,7 +159,15 @@ function leerFestivos() {
 // --- Cálculo y pintado -----------------------------------------------------
 
 function recalcular() {
-  if (!estado.filas.length) return;
+  if (!estado.filas.length) {
+    if (estado.serie) {
+      refrescarConSerie();
+      guardarSolo();
+      pintarHistorico();
+      refrescarMesesContador();
+    }
+    return;
+  }
   try {
     estado.serie = construirSerie(estado.filas, estado.roles, estado.unidades, {
       invertirRed: $("invertirRed").checked,
@@ -188,8 +197,28 @@ function refrescarConSerie() {
   prepararGraficas();
 }
 
-function totales() {
-  const { registros, unidadesRol } = estado.serie;
+function actualizarFacturaGuardada(mes) {
+  if (estado.factura && !estado.factura.restaurada) return;
+  const f = leerHistorico().find((m) => m.mes === mes)?.factura;
+  if (JSON.stringify(estado.factura?.resumenGuardado) === JSON.stringify(f)) return;
+  if (Number.isFinite(f?.total)) {
+    estado.factura = {
+      ...f, consumo: { P1: f.P1, P2: f.P2, P3: f.P3 }, consumoTotal: f.total,
+      total: f.importe, lecturas: f.lecturas || {}, precio: f.precio || {},
+      restaurada: true, resumenGuardado: f,
+    };
+    estado.mesFactura = mes;
+    $("estadoFactura").textContent = "Resumen guardado; carga el PDF para revisar también los importes.";
+  } else if (estado.factura?.restaurada) {
+    estado.factura = null;
+    estado.mesFactura = null;
+    $("estadoFactura").textContent = "No hay una factura verificada guardada para este mes.";
+  } else return;
+  estado.mesComparacion = null;
+}
+
+function totales(serie = estado.serie) {
+  const { registros, unidadesRol } = serie;
   const kwh = (rol) => energiaKwh(registros, rol, unidadesRol[rol]);
   const consumo = kwh("consumo");
   return {
@@ -200,7 +229,7 @@ function totales() {
     autoconsumo: kwh("autoconsumo"),
     carga: kwh("carga"),
     descarga: kwh("descarga"),
-    cobertura: consumo > 0 ? (1 - kwh("importada") / consumo) * 100 : 0,
+    cobertura: consumo > 0 ? kwh("autoconsumo") / consumo * 100 : 0,
   };
 }
 
@@ -242,6 +271,8 @@ function valorFactura(clave) {
 // Al leer un PDF nuevo mandan sus cifras; si no, se respeta lo escrito a mano.
 function pintarComparacion(refrescarFactura = false) {
   if (!estado.serie) return;
+  const mesSolarman = mesDominante(estado.dias.map((d) => d.fecha));
+  actualizarFacturaGuardada(mesSolarman);
   const { registros, unidadesRol } = estado.serie;
   const reparto = repartoPorPeriodo(registros, "importada", unidadesRol.importada, estado.festivos);
   const medido = {
@@ -254,7 +285,8 @@ function pintarComparacion(refrescarFactura = false) {
   estado.medido = medido;
 
   const leido = estado.factura;
-  const mesSolarman = mesDominante(estado.dias.map((d) => d.fecha));
+  estado.cotejo = cotejarFactura(leido, estado.serie, [...leerCurvas().values()].flat(), estado.festivos);
+  const comparable = estado.cotejo.solarman || medido;
   if (leido) estado.mesFactura ??= mesDeFactura(leido) || mesSolarman;
   const mesFactura = mesDeFactura(leido) || estado.mesFactura;
   const distintos = Boolean(leido && mesFactura !== mesSolarman);
@@ -281,13 +313,16 @@ function pintarComparacion(refrescarFactura = false) {
     fila.innerHTML =
       `<th role="rowheader" scope="row">${concepto.etiqueta}</th>` +
       `<td role="cell" class="numero" data-rotulo="Factura"><input type="number" step="0.01" min="0" inputmode="decimal" data-clave="${concepto.clave}" value="${valor ?? ""}" ${distintos ? "disabled" : ""} aria-label="${concepto.etiqueta} según la factura"> kWh</td>` +
-      `<td role="cell" class="numero" data-rotulo="Solarman">${numero(medido[concepto.clave])} kWh</td>` +
+      `<td role="cell" class="numero" data-rotulo="Solarman">${numero(comparable[concepto.clave])} kWh</td>` +
       `<td role="cell" class="numero" data-rotulo="Diferencia" data-desvio="${concepto.clave}"></td>` +
       `<td role="cell" class="regla" data-regla="${concepto.clave}"></td>`;
     cuerpo.appendChild(fila);
   }
   cuerpo.querySelectorAll("input").forEach((entrada) => {
-    entrada.addEventListener("input", pintarDesvios);
+    entrada.addEventListener("input", () => {
+      if (estado.factura) estado.factura.restaurada = false;
+      pintarDesvios();
+    });
     entrada.addEventListener("change", guardarSolo);
   });
 
@@ -321,10 +356,9 @@ function pintarOrigenComparacion(f) {
 }
 
 function pintarDesvios() {
-  const medido = estado.medido;
+  const medido = estado.cotejo?.solarman || estado.medido;
   const mesSolarman = mesDominante(estado.dias.map((d) => d.fecha));
   const distintos = estado.factura && (mesDeFactura(estado.factura) || estado.mesFactura) !== mesSolarman;
-  let veredicto = null;
 
   for (const concepto of CONCEPTOS) {
     const celda = document.querySelector(`#tablaFactura [data-desvio="${concepto.clave}"]`);
@@ -336,13 +370,11 @@ function pintarDesvios() {
       regla.innerHTML = "";
       continue;
     }
-    const diferencia = facturado - medido[concepto.clave];
-    const relativo = medido[concepto.clave] > 0 ? (diferencia / medido[concepto.clave]) * 100 : 0;
+    const { diferencia, relativo } = diferenciaEnergia(facturado, medido[concepto.clave]);
     const signo = diferencia > 0 ? "+" : "";
-    celda.textContent = `${signo}${numero(diferencia)} kWh (${signo}${numero(relativo, 1)} %)`;
-    celda.className = `numero ${Math.abs(relativo) <= 5 ? "desvio-bien" : "desvio-mal"}`;
-    regla.innerHTML = htmlRegla(relativo);
-    if (concepto.clave === "total") veredicto = relativo;
+    celda.textContent = `${signo}${numero(diferencia)} kWh (${relativo == null ? "sin base porcentual" : `${signo}${numero(relativo, 1)} %`})`;
+    celda.className = "numero";
+    regla.innerHTML = estado.cotejo?.coberturaSolarman?.completa ? htmlRegla(relativo) : "";
   }
 
   const caja = $("veredicto");
@@ -351,23 +383,9 @@ function pintarDesvios() {
     caja.textContent = "La factura y Solarman son de meses distintos: no se comparan ni se guarda esta factura en el mes de esos datos. Carga los datos del mismo mes que la factura.";
     return;
   }
-  if (veredicto == null) {
-    caja.className = "veredicto";
-    caja.textContent = "Introduce los kWh que aparecen en la factura para comparar.";
-    return;
-  }
-  const desvio = Math.abs(veredicto);
-  const nota = notaPeriodo() + notaMedicion();
-  if (desvio <= 3) {
-    caja.className = "veredicto bien";
-    caja.textContent = `La factura cuadra: solo ${numero(desvio, 1)} % de diferencia con lo que midió tu instalación. ${nota}`;
-  } else if (desvio <= 10) {
-    caja.className = "veredicto regular";
-    caja.textContent = `Diferencia del ${numero(desvio, 1)} %. Entra dentro de lo esperable por pérdidas y por dónde mide cada aparato, pero conviene mirarlo. ${nota}`;
-  } else {
-    caja.className = "veredicto mal";
-    caja.textContent = `Diferencia del ${numero(desvio, 1)} %: demasiada. Antes de reclamar, mira la revisión de las cuentas de la factura y el aviso de medición. ${nota}`;
-  }
+  const resultado = diagnosticoCotejo(Object.fromEntries(CONCEPTOS.map((c) => [c.clave, valorFactura(c.clave)])), estado.cotejo);
+  caja.className = `veredicto ${resultado.tono}`;
+  caja.textContent = `${resultado.mensaje} ${notaPeriodo()}`;
 }
 
 // El datalogger hace una foto cada pocos minutos: los picos cortos de compra y
@@ -392,7 +410,7 @@ const euros = (valor) => (Number.isFinite(valor) ? `${numero(valor, 2)} €` : "
 function pintarRevision() {
   const f = estado.factura;
   const seccion = $("revision");
-  const puntos = f ? revisarFactura(f) : [];
+  const puntos = f && !f.restaurada ? revisarFactura(f) : [];
   if (!puntos.length) {
     seccion.hidden = true;
     return;
@@ -415,8 +433,8 @@ function pintarRevision() {
   const caja = $("veredictoRevision");
   caja.className = `veredicto ${fallos.length ? "mal" : "bien"}`;
   caja.textContent = fallos.length
-    ? `${fallos.length} de ${puntos.length} operaciones no cuadran. Eso sí es un error de facturación: reclama con esta lista.`
-    : `Las ${puntos.length} operaciones de la factura cuadran entre sí. Si el importe te chirría, mira los kWh y los precios de abajo, no la aritmética.`;
+    ? `${fallos.length} de ${puntos.length} operaciones extraídas no cuadran. Revisa las cifras contra el PDF antes de atribuirlo a un error de facturación.`
+    : `Las ${puntos.length} operaciones comprobadas coinciden. Esto no valida el consumo ni las operaciones que no se hayan extraído.`;
 
   pintarLecturas(f);
   pintarAvisosFactura(f);
@@ -487,7 +505,9 @@ function pintarAvisosFactura(f) {
   }
 
   if (Object.values(f.lecturas).some((l) => l?.estimada)) {
-    avisos.push(["mal", "Hay lecturas estimadas: el consumo facturado no viene de una lectura real del contador."]);
+    avisos.push(["regular", "El PDF identifica alguna lectura como estimada. Comprueba en Datadis qué horas son reales o estimadas antes de interpretar el consumo."]);
+  } else if (/^calculad/i.test(f.procedencia || "")) {
+    avisos.push(["regular", "El PDF indica «Calculada» para las lecturas impresas. Eso no significa que el consumo horario sea estimado: la procedencia de cada hora se comprueba en Datadis."]);
   }
 
   $("avisosFactura").innerHTML = avisos
@@ -501,26 +521,35 @@ function componerMes() {
   if (!estado.serie || !estado.dias.length) return null;
   const mes = mesDominante(estado.dias.map((d) => d.fecha));
   if (!mes) return null;
-  const t = totales();
+  const registros = estado.serie.registros.filter((p) => claveDia(p.instante).startsWith(mes));
+  const dias = resumenPorDia(registros, estado.serie.unidadesRol);
+  const t = totales({ ...estado.serie, registros });
+  const reparto = repartoPorPeriodo(registros, "importada", estado.serie.unidadesRol.importada, estado.festivos);
+  const [anio, numeroMes] = mes.split("-").map(Number);
   const f = estado.factura;
   const previo = leerHistorico().find((m) => m.mes === mes);
   const coincide = f ? (mesDeFactura(f) || estado.mesFactura) === mes : estado.mesComparacion === mes;
-  const hayFactura = coincide && (Boolean(f) || CONCEPTOS.some((c) => valorFactura(c.clave) != null));
+  const hayFactura = !f?.restaurada && coincide && (Boolean(f) || CONCEPTOS.some((c) => valorFactura(c.clave) != null));
   return {
     ...previo,
+    ...(hayFactura ? { facturaPendiente: null } : {}),
     mes,
-    dias: estado.dias.length,
-    desde: estado.dias[0].fecha.toISOString(),
-    hasta: estado.dias[estado.dias.length - 1].fecha.toISOString(),
+    dias: dias.length,
+    desde: dias[0].fecha.toISOString(),
+    hasta: dias[dias.length - 1].fecha.toISOString(),
+    cobertura: coberturaPeriodo(registros, new Date(anio, numeroMes - 1, 1), new Date(anio, numeroMes, 1)),
+    festivos: [...(estado.festivos || [])],
     medido: {
-      ...estado.medido,
+      ...reparto,
+      total: t.importada,
+      excedentes: t.exportada,
       produccion: t.produccion,
       consumo: t.consumo,
       carga: t.carga,
       descarga: t.descarga,
     },
     // Guardar el dia a dia permite reabrir el mes sin volver a cargar el fichero.
-    detalle: estado.dias.map((d) => [
+    detalle: dias.map((d) => [
       d.clave,
       +d.produccion.toFixed(2),
       +d.consumo.toFixed(2),
@@ -533,6 +562,7 @@ function componerMes() {
           desde: f?.desde ? new Date(f.desde).toISOString() : null,
           hasta: f?.hasta ? new Date(f.hasta).toISOString() : null,
           comercializadora: f?.comercializadora ?? null,
+          procedencia: f?.procedencia ?? null,
           P1: valorFactura("P1"),
           P2: valorFactura("P2"),
           P3: valorFactura("P3"),
@@ -541,7 +571,7 @@ function componerMes() {
           lecturas: f?.lecturas ?? null,
           precioEnergia: f?.precio?.P1 ?? null,
           precioExcedentes: f?.precioExcedentes ?? null,
-          importe: f?.total ?? null,
+          importe: f?.totalAPagar ?? f?.total ?? null,
           referencia: f?.referencia ?? null,
         }
       : (previo?.factura ?? {}),
@@ -564,6 +594,10 @@ function sincronizarGuardado() {
     const mensaje = error ? `No se ha podido subir: ${error.message}` : "Sincronizado";
     marcarNube(mensaje);
     if (error) avisar(mensaje);
+    else {
+      pintarHistorico();
+      refrescarMesesContador();
+    }
   });
 }
 
@@ -592,10 +626,15 @@ function pintarHistorico() {
       );
     };
     const c = fila.contador;
-    const sello = c?.horas && c.estimadas === c.horas ? ` <span class="sello">estimado</span>` : "";
+    const periodo = periodoFactura(fila.factura);
+    const [anio, mes] = fila.mes.split("-").map(Number);
+    const parcial = periodo && (+periodo.desde !== +new Date(anio, mes - 1, 1) || +periodo.hasta !== +new Date(anio, mes, 1));
+    const sello = (c?.horas && c.estimadas === c.horas ? ` <span class="sello">estimado</span>` : "") +
+      (parcial ? ` <span class="sello">factura parcial</span>` : "") +
+      (fila.facturaPendiente ? ` <span class="sello">factura pendiente</span>` : "");
     const produccion = Number.isFinite(fila.medido?.produccion) ? `${numero(fila.medido.produccion, 0)} kWh` : "—";
     tr.innerHTML =
-      `<th role="rowheader" scope="row" class="mes"><span class="mes-nombre">${nombreMes(fila.mes)}</span>${sello}<small class="mes-dias">${fila.dias} días</small></th>` +
+      `<th role="rowheader" scope="row" class="mes"><span class="mes-nombre">${nombreMes(fila.mes)}</span>${sello}<small class="mes-dias">${fila.dias} días · ${fila.cobertura ? `${numero(fila.cobertura.porcentaje, 1)} % registrado` : "cobertura solar sin verificar"}</small></th>` +
       `<td role="cell" class="numero" data-rotulo="Producido">${produccion}</td>` +
       celda("Comprado", fila.medido?.total, fila.contador?.total, fila.factura?.total) +
       celda("Vertido", fila.medido?.excedentes, fila.contador?.vertido, fila.factura?.excedentes) +
@@ -624,6 +663,8 @@ function pintarHistorico() {
     boton.addEventListener("click", () => {
       borrarMes(boton.dataset.borrar);
       pintarHistorico();
+      refrescarMesesContador();
+      sincronizarGuardado();
     })
   );
 
@@ -717,14 +758,19 @@ function pintarDetalleMes(mes, desplazar = true) {
   const faltan = [];
   if (!Number.isFinite(fila.medido?.total)) faltan.push("el fichero del datalogger");
   if (!Number.isFinite(fila.factura?.total)) faltan.push("la factura");
+  const cotejo = cotejarFactura(fila.factura, null, [...leerCurvas().values()].flat(), new Set(fila.festivos || []));
+  const diagnostico = diagnosticoCotejo(fila.factura || {}, cotejo);
 
   const clave = (nombre, color) => `<span><i style="background:${color}"></i>${nombre}</span>`;
   caja.innerHTML =
     `<div class="detalle-cabeza">` +
     `<h3 class="detalle-mes">${nombreMes(fila.mes)}${sello}</h3>` +
-    `<p class="ayuda">${fila.dias} días guardados${fila.guardado ? ` · última actualización ${new Date(fila.guardado).toLocaleDateString("es-ES")}` : ""}.` +
+    `<p class="ayuda">${fila.dias} días con registros${fila.cobertura ? ` · ${numero(fila.cobertura.horas, 1)} de ${numero(fila.cobertura.esperadas, 0)} horas de Solarman` : " · cobertura horaria de Solarman sin verificar"}${fila.guardado ? ` · última actualización ${new Date(fila.guardado).toLocaleDateString("es-ES")}` : ""}.` +
     (faltan.length ? ` Falta cargar ${faltan.join(" y ")} de este mes.` : "") +
-    `</p></div>` +
+    (periodoFactura(fila.factura) ? ` La factura cubre del ${fechaCorta(fila.factura.desde)} al ${fechaCorta(new Date(+periodoFactura(fila.factura).hasta - 1))}; los otros totales son del mes y pueden no cubrir el mismo tramo.` : " El periodo de la factura no está verificado.") +
+    (fila.facturaPendiente ? ` ${fila.facturaPendiente}` : "") +
+    (fila.notaDatos ? ` ${fila.notaDatos}` : "") +
+    `</p><p class="veredicto ${diagnostico.tono}">${diagnostico.mensaje}</p></div>` +
     `<div class="lectura-cifras detalle-cifras">` +
     ficha(`Producción solar ${htmlIcono("i-sol")}`, fila.medido?.produccion, "kWh", "c-sol") +
     ficha(`Consumo de la casa ${htmlIcono("i-sol")}`, fila.medido?.consumo, "kWh", "c-casa") +
@@ -778,30 +824,21 @@ function pintarGraficaHistorico(filas) {
     ["Comprado según la factura", COLORES.importe],
   ]);
   barrasAgrupadas($("graficaHistorico"), {
-    etiquetas: filas.map((f) => nombreMes(f.mes).split(" ")[0]),
+    etiquetas: filas.map((f) => f.mes),
     series: [
-      { nombre: "Instalación", color: COLORES.produccion, valores: filas.map((f) => f.medido?.total ?? 0) },
-      { nombre: "Contador", color: COLORES.carga, valores: filas.map((f) => f.contador?.total ?? 0) },
-      { nombre: "Factura", color: COLORES.importe, valores: filas.map((f) => f.factura?.total ?? 0) },
+      { nombre: "Instalación", color: COLORES.produccion, valores: filas.map((f) => f.medido?.total ?? null) },
+      { nombre: "Contador", color: COLORES.carga, valores: filas.map((f) => f.contador?.total ?? null) },
+      { nombre: "Factura", color: COLORES.importe, valores: filas.map((f) => f.factura?.total ?? null) },
     ],
   });
 }
 
 // Comparar dos periodos distintos no significa nada, así que se avisa.
 function notaPeriodo() {
-  const dias = estado.dias.length;
-  const propio = `Estás comparando ${dias} día${dias === 1 ? "" : "s"} de datos.`;
-  const desde = estado.factura?.desde;
-  const hasta = estado.factura?.hasta;
-  if (!desde || !hasta) return `${propio} Asegúrate de que cubren exactamente el periodo de la factura.`;
-
-  const primero = estado.dias[0].fecha;
-  const ultimo = estado.dias[dias - 1].fecha;
-  const formato = (fecha) => fecha.toLocaleDateString("es-ES");
-  if (claveDia(primero) === claveDia(desde) && claveDia(ultimo) === claveDia(hasta)) {
-    return `${propio} Coinciden con el periodo facturado (${formato(desde)} a ${formato(hasta)}).`;
-  }
-  return `Ojo: la factura va del ${formato(desde)} al ${formato(hasta)} y tus datos van del ${formato(primero)} al ${formato(ultimo)}. Exporta el mismo tramo para que la comparación valga.`;
+  const c = estado.cotejo?.coberturaSolarman;
+  if (!c) return "La cobertura de Solarman no está verificada.";
+  return `Solarman: ${numero(c.horas, 1)} de ${numero(c.esperadas, 0)} horas del periodo (${numero(c.porcentaje, 1)} %). ` +
+    (c.completa ? "Sus diferencias son orientativas: mide en otro punto de la instalación." : "Registro incompleto: no se pueden atribuir las diferencias a una avería o a un cobro incorrecto.");
 }
 
 // --- Gráficas --------------------------------------------------------------
@@ -839,18 +876,18 @@ function pintarMes() {
     etiquetas: estado.dias.map((dia) => String(dia.fecha.getDate())),
     capas: [
       { nombre: "Autoconsumo", color: COLORES.produccion, valores: estado.dias.map((d) => d.autoconsumo) },
-      { nombre: "Red", color: COLORES.importada, valores: estado.dias.map((d) => d.importada) },
+      { nombre: "Red atribuida a la casa", color: COLORES.importada, valores: estado.dias.map((d) => Math.max(0, d.consumo - d.autoconsumo)) },
     ],
   });
 
   const { unidadesRol } = estado.serie;
   const indicePorDia = new Map(estado.dias.map((dia, i) => [dia.clave, i]));
-  const matriz = estado.dias.map(() => new Array(24).fill(0));
+  const matriz = estado.dias.map(() => new Array(24).fill(null));
   for (const punto of estado.serie.registros) {
     const fila = indicePorDia.get(claveDia(punto.instante));
     if (fila === undefined) continue;
     const kwh = unidadesRol.importada === "kWh" ? punto.importada || 0 : ((punto.importada || 0) * punto.horas) / 1000;
-    matriz[fila][punto.instante.getHours()] += kwh;
+    if (punto.horas > 0) matriz[fila][punto.instante.getHours()] = (matriz[fila][punto.instante.getHours()] ?? 0) + kwh;
   }
   mapaCalor($("graficaCalor"), { dias: estado.dias.map((d) => d.clave), matriz });
 }
@@ -871,6 +908,7 @@ function refrescarMesesContador() {
     $(id).value = mes;
   }
   pintarCurvaContador();
+  if (estado.serie) pintarComparacion();
 }
 
 function marcaDatadis(texto, tono = "") {
@@ -938,18 +976,7 @@ async function pintarContrato() {
 }
 
 function resumirCurva(registros) {
-  const festivos = estado.festivos || new Set();
-  const resumen = { P1: 0, P2: 0, P3: 0, total: 0, vertido: 0, horas: registros.length, estimadas: 0 };
-  const dias = new Set();
-  for (const punto of registros) {
-    resumen[periodoTarifa(punto.instante, festivos)] += punto.consumo;
-    resumen.total += punto.consumo;
-    resumen.vertido += punto.vertido;
-    if (!punto.real) resumen.estimadas++;
-    dias.add(claveDia(punto.instante));
-  }
-  resumen.dias = dias.size;
-  return resumen;
+  return resumirContador(registros, estado.festivos || new Set());
 }
 
 function anotarContador(mes, resumen) {
@@ -977,9 +1004,10 @@ async function bajarDeDatadis() {
       const curva = await conEspera(rotulo, () =>
         datadis.curvaHoraria(suministro.cups, suministro.codigoDistribuidora, desde, hasta, suministro.tipoPunto));
       for (const [clave, puntos] of agruparPorMes(curva)) {
-        contador.curvas.set(clave, puntos);
         guardarCurva(clave, puntos);
-        anotarContador(clave, resumirCurva(puntos));
+        const guardados = leerCurvas().get(clave);
+        contador.curvas.set(clave, guardados);
+        anotarContador(clave, resumirCurva(guardados));
         bajados++;
       }
     } catch (error) {
@@ -1049,7 +1077,7 @@ function analizarSolape(curva) {
   let kwh = 0;
   for (const punto of curva) {
     const clave = claveDia(punto.instante);
-    if (!dias.has(clave)) dias.set(clave, { clave, matriz: new Array(24).fill(0), kwh: 0 });
+    if (!dias.has(clave)) dias.set(clave, { clave, matriz: new Array(24).fill(null), kwh: 0 });
     const dia = dias.get(clave);
     const solape = Math.min(punto.consumo, punto.vertido);
     dia.matriz[punto.instante.getHours()] += solape;
@@ -1086,15 +1114,13 @@ function pintarCurvaContador() {
   const inventado = Boolean(resumen?.horas) && resumen.estimadas === resumen.horas;
   const solape =
     kwh < 2
-      ? `<p class="veredicto bien">En ${nombreMes(mes)} el contador compensa bien: solo ${numero(kwh, 1)} kWh se registraron ` +
-        `entrando y saliendo a la vez, lo normal en las horas de amanecer y anochecer.</p>`
+      ? `<p class="veredicto bien">En las horas disponibles de ${nombreMes(mes)} el solape de compra y vertido es de ${numero(kwh, 1)} kWh. ` +
+        `No hay un solape horario significativo en esta curva.</p>`
       : inventado
         ? `<p class="veredicto regular">Hay ${numero(kwh, 1)} kWh en ${horas} horas con energía entrando y saliendo a la vez. ` +
-          `Como el mes está estimado entero, eso lo ha producido el cálculo de la distribuidora, no tu contador.</p>`
-        : `<p class="veredicto mal">En ${nombreMes(mes)} hay <b>${numero(kwh, 1)} kWh</b> repartidos en ${horas} horas en las que el contador ` +
-          `apuntó energía entrando y saliendo al mismo tiempo. Esa energía te la cobran como comprada y te la pagan como vertida, ` +
-          `cuando en realidad nunca salió de tu casa. Son ${numero((kwh / total) * 100, 0)}% de los ${numero(total, 0)} kWh que te constan comprados ese mes.` +
-          (cambio ? ` Empieza el <b>${cambio.clave}</b>.` : "") +
+          `Como las horas están estimadas, este patrón no permite diagnosticar el contador.</p>`
+        : `<p class="veredicto regular">En ${nombreMes(mes)} hay <b>${numero(kwh, 1)} kWh</b> de solape de compra y vertido en ${horas} horas publicadas. ` +
+          `Una curva horaria no prueba que los flujos fueran simultáneos ni que exista un cobro indebido. Comprueba el tipo de curva y su balance neto antes de reclamar.` +
           `</p>`;
   $("veredictoSolape").innerHTML = panelEstimado(mes) + solape;
 
@@ -1118,7 +1144,7 @@ function pintarCurvaContador() {
   const etiquetas = propios.map((d) => String(d.fecha.getDate()));
   const serie = (rol, campo) => [
     { nombre: "Instalación", color: COLORES.descarga, valores: propios.map((d) => d[rol]) },
-    { nombre: "Contador", color: COLORES.importada, valores: propios.map((d) => porDia.get(d.clave)?.[campo] ?? 0) },
+    { nombre: "Contador", color: COLORES.importada, valores: propios.map((d) => porDia.get(d.clave)?.[campo] ?? null) },
   ];
   leyenda("leyendaDiaria", [["Tu instalación", COLORES.descarga], ["El contador", COLORES.importada]]);
   barrasAgrupadas($("compraDiaria"), { etiquetas, series: serie("importada", "compra") });
@@ -1148,16 +1174,16 @@ function panelEstimado(mes) {
       return cerca || enMeses(b.mes) - enMeses(a.mes);
     })[0];
 
-  const cifras = [[numero(c.total, 0), "kWh que te facturan"]];
+  const cifras = [[numero(c.total, 0), "kWh de la curva disponible"]];
   if (Number.isFinite(fila.medido?.total)) cifras.push([numero(fila.medido.total, 0), "kWh midió tu casa"]);
   // El mes de contraste solo hace falta para juzgar uno estimado.
   if (referencia && !nadaEstimado) cifras.push([numero(referencia.contador.total, 0), `kWh en ${nombreMes(referencia.mes)}, con lectura real`]);
 
   const pie = nadaEstimado
-    ? `del mes lo midió el contador: la distribuidora leyó las ${c.horas} horas, no calculó ninguna.`
+    ? `de las horas disponibles son reales: ${c.horas} horas publicadas.`
     : todoEstimado
-      ? `del mes está estimado: la distribuidora no midió ninguna de las ${c.horas} horas. Aun así, es lo que se factura.`
-      : `del mes está estimado: ${c.estimadas} de las ${c.horas} horas las calculó la distribuidora en vez de medirlas. Aun así, es lo que se factura.`;
+      ? `de las ${c.horas} horas disponibles están estimadas; no son lecturas reales.`
+      : `de las horas disponibles están estimadas: ${c.estimadas} de ${c.horas}.`;
 
   return (
     `<div class="titular ${nadaEstimado ? "bien" : todoEstimado ? "mal" : "regular"}">` +
@@ -1166,7 +1192,7 @@ function panelEstimado(mes) {
     `<div class="estimado"><b>${cifraEstimado}</b><small>estimado</small></div>` +
     `<div class="real"><b>${cifraReal}</b><small>lectura real</small></div>` +
     `</div>` +
-    `<p class="titular-pie">${pie}</p>` +
+    `<p class="titular-pie">${pie} ${c.cobertura ? `Cobertura: ${numero(c.cobertura.horas, 0)} de ${numero(c.cobertura.esperadas, 0)} horas del mes.` : "Cobertura mensual sin verificar."}</p>` +
     `<div class="titular-cifras">` +
     cifras.map(([valor, pie]) => `<div><b>${valor}</b><small>${pie}</small></div>`).join("") +
     `</div></div>`
@@ -1185,7 +1211,7 @@ function pintarDiasImposibles(porDia, propios) {
     const techo = produccion.get(clave);
     const razones = [];
     if (techo != null && dia.vertido > techo * 1.2 + 2) {
-      razones.push(`ese día tus placas solo generaron ${numero(techo, 1)} kWh`);
+      razones.push(`Solarman registró ${numero(techo, 1)} kWh de producción, con cobertura que debe comprobarse`);
     }
     if (centro > 0 && dia.vertido > centro * 4) {
       razones.push(`el resto de días del mes rondan ${numero(centro, 1)} kWh`);
@@ -1196,8 +1222,8 @@ function pintarDiasImposibles(porDia, propios) {
   if (!sospechosos.length) return;
 
   caja.innerHTML =
-    `<p class="veredicto mal">Hay ${sospechosos.length === 1 ? "un día imposible" : `${sospechosos.length} días imposibles`} en la curva del contador. ` +
-    `Nadie puede verter a la red más energía de la que genera, así que ${sospechosos.length === 1 ? "ese dato es" : "esos datos son"} incorrecto${sospechosos.length === 1 ? "" : "s"}.</p>` +
+    `<p class="veredicto regular">Hay ${sospechosos.length} días con diferencias o vertido elevado que conviene revisar. ` +
+    `No demuestran por sí solos un error: comprueba cobertura, batería y calidad de la curva.</p>` +
     `<ul class="lista-avisos">` +
     sospechosos
       .map(
@@ -1264,6 +1290,8 @@ $("subirNube").addEventListener("click", async () => {
   marcarNube("subiendo…");
   try {
     const r = await subirANube();
+    pintarHistorico();
+    refrescarMesesContador();
     marcarNube("activa");
     avisar(`Histórico subido y cifrado (${Math.round(r.bytes / 1024)} kB).`);
   } catch (error) {
@@ -1312,11 +1340,13 @@ let serieEnPantalla = null;
 function restaurarSerie() {
   const guardado = leerSerie();
   // Un fichero recien cargado manda sobre lo guardado.
-  if (!guardado || guardado.mes === serieEnPantalla || estado.filas.length) return;
+  if (!guardado || `${guardado.mes}:${guardado.guardado}` === serieEnPantalla || estado.filas.length) return;
   const serie = deserializarSerie(guardado.serie);
   if (!serie) return;
   estado.serie = serie;
-  serieEnPantalla = guardado.mes;
+  serieEnPantalla = `${guardado.mes}:${guardado.guardado}`;
+  const mes = leerHistorico().find((m) => m.mes === guardado.mes);
+  $("festivos").value = (mes?.festivos || []).map((f) => f.split("-").reverse().join("/")).join(", ");
   refrescarConSerie();
   $("estadoDatos").textContent = `${nombreMes(guardado.mes)} · guardado en este navegador`;
 }

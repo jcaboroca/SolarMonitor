@@ -53,7 +53,8 @@ export function modeloAnual(meses) {
     const bruto = consumo === null ? null : consumo * px;
     return {
       ...base, produccion, consumo, dias,
-      parcial: dias !== null && dias < diasMes,
+      parcial: m.cobertura ? !m.cobertura.completa : dias !== null && dias < diasMes,
+      cobertura: m.cobertura ?? null,
       sol: Math.min(produccion / escala.kwh, 1) * LMAX,
       casa: bruto === null ? null : Math.min(bruto, LCASA),
       desborde: bruto !== null && bruto > LCASA,
@@ -148,7 +149,7 @@ export function pintarAnual(figura, m, hoy = new Date()) {
   resumen.textContent =
     `${m.anio}, mes a mes: ` +
     conDato
-      .map((x) => `${nombre(x.mes)}, ${kwh(x.produccion)} producidos${x.consumo === null ? "" : ` y ${kwh(x.consumo)} consumidos`}${x.parcial ? ` (${x.dias} de ${x.diasMes} días)` : ""}`)
+      .map((x) => `${nombre(x.mes)}, ${kwh(x.produccion)} producidos${x.consumo === null ? "" : ` y ${kwh(x.consumo)} consumidos`}${x.cobertura ? ` (${Math.round(x.cobertura.porcentaje)} % de cobertura horaria)` : ` (cobertura horaria sin verificar; ${x.dias ?? "?"} de ${x.diasMes} días)`}`)
       .join("; ") +
     `. Los demás meses no están guardados.`;
   figura.dataset.anio = m.anio;

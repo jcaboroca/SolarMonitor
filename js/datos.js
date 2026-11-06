@@ -86,6 +86,21 @@ function mediana(valores) {
   return orden[Math.floor(orden.length / 2)];
 }
 
+// Las dos horas locales iguales del cambio de otoño son instantes distintos.
+export function normalizarInstantes(registros) {
+  const vistos = new Set();
+  return registros.map((punto) => {
+    let instante = new Date(punto.instante);
+    const repetida = new Date(instante.getTime() + 3600000);
+    if (vistos.has(+instante) && !vistos.has(+repetida)
+      && instante.getTimezoneOffset() !== repetida.getTimezoneOffset()
+      && instante.getHours() === repetida.getHours()
+      && instante.getDate() === repetida.getDate()) instante = repetida;
+    vistos.add(+instante);
+    return { ...punto, instante };
+  }).sort((a, b) => a.instante - b.instante);
+}
+
 /**
  * Convierte la matriz cruda en registros ordenados con potencias en W
  * y la duración real de cada intervalo.
@@ -102,7 +117,7 @@ export function construirSerie(filas, roles, unidades, { invertirRed = false, in
     if (rol !== "tiempo") unidadesRol[rol] = unidades[columna] === "kWh" ? "kWh" : "W";
   }
 
-  const registros = [];
+  let registros = [];
   for (const fila of filas) {
     const instante = aFecha(fila[columnaDe.tiempo]);
     if (!instante) continue;
@@ -124,7 +139,7 @@ export function construirSerie(filas, roles, unidades, { invertirRed = false, in
     if (invertirBateria && "bateria" in punto) punto.bateria = -punto.bateria;
     registros.push(punto);
   }
-  registros.sort((a, b) => a.instante - b.instante);
+  registros = normalizarInstantes(registros);
 
   const saltos = [];
   for (let i = 1; i < registros.length; i++) saltos.push(registros[i].instante - registros[i - 1].instante);
@@ -133,7 +148,7 @@ export function construirSerie(filas, roles, unidades, { invertirRed = false, in
   registros.forEach((punto, i) => {
     const bruto = i + 1 < registros.length ? registros[i + 1].instante - registros[i].instante : paso;
     // Un hueco de datos no debe contarse como energía: se limita al paso normal.
-    punto.horas = Math.min(bruto, paso * 1.5) / 3600000;
+    punto.horas = Math.max(0, bruto > paso * 1.5 ? paso : bruto) / 3600000;
   });
 
   for (const [derivado, origen] of [["importada", "red"], ["exportada", "red"], ["carga", "bateria"], ["descarga", "bateria"]]) {
@@ -141,6 +156,7 @@ export function construirSerie(filas, roles, unidades, { invertirRed = false, in
   }
   unidadesRol.consumo ??= unidadesRol.produccion || "W";
   unidadesRol.autoconsumo = unidadesRol.consumo;
+  unidadesRol.redCasa = unidadesRol.consumo;
 
   // Con la red firmada se deduce qué se compró y qué se vertió.
   for (const punto of registros) {
@@ -153,6 +169,7 @@ export function construirSerie(filas, roles, unidades, { invertirRed = false, in
         - (punto.carga || 0) + (punto.descarga || 0);
     }
     punto.autoconsumo = Math.max((punto.consumo || 0) - (punto.importada || 0), 0);
+    punto.redCasa = Math.min(Math.max(punto.consumo || 0, 0), Math.max(punto.importada || 0, 0));
     // Lo que va del sol directamente a la casa, sin pasar por la red ni la batería.
     punto.solarDirecta = Math.max((punto.produccion || 0) - (punto.exportada || 0) - (punto.carga || 0), 0);
   }
@@ -168,11 +185,11 @@ export function serializarSerie({ registros, unidadesRol, pasoMinutos }) {
     unidadesRol,
     pasoMinutos,
     campos,
-    // Las horas llevan seis decimales porque multiplican a toda la energia.
+    // Redondear aquí acumularía pérdidas de energía y falsos huecos al restaurar.
     valores: registros.map((p) => [
       p.instante.getTime(),
-      +p.horas.toFixed(6),
-      ...campos.map((c) => (typeof p[c] === "number" ? +p[c].toFixed(3) : null)),
+      p.horas,
+      ...campos.map((c) => (typeof p[c] === "number" ? p[c] : null)),
     ]),
   };
 }
@@ -195,6 +212,14 @@ export function energiaKwh(registros, rol, unidad) {
   return registros.reduce((suma, p) => suma + (p[rol] || 0) * p.horas, 0) / 1000;
 }
 
+export function repartoCasa(punto) {
+  const consumo = Math.max(punto.consumo || 0, 0);
+  const importada = Math.min(consumo, Math.max(punto.importada || 0, 0));
+  const solarDirecta = Math.min(consumo - importada, Math.max(punto.solarDirecta || 0, 0));
+  const descarga = Math.min(consumo - importada - solarDirecta, Math.max(punto.descarga || 0, 0));
+  return { importada, solarDirecta, descarga };
+}
+
 export function claveDia(fecha) {
   const mes = String(fecha.getMonth() + 1).padStart(2, "0");
   const dia = String(fecha.getDate()).padStart(2, "0");
@@ -204,7 +229,10 @@ export function claveDia(fecha) {
 /** Periodo tarifario 2.0TD: fines de semana y festivos son valle todo el día. */
 export function periodoTarifa(fecha, festivos = new Set()) {
   const diaSemana = fecha.getDay();
-  if (diaSemana === 0 || diaSemana === 6 || festivos.has(claveDia(fecha))) return "P3";
+  // Circular 3/2020, art. 7: Reyes y festivos nacionales fijos no sustituibles.
+  const fijos = ["01-01", "01-06", "05-01", "08-15", "10-12", "11-01", "12-06", "12-08", "12-25"];
+  const clave = claveDia(fecha);
+  if (diaSemana === 0 || diaSemana === 6 || fijos.includes(clave.slice(5)) || festivos.has(clave)) return "P3";
   const hora = fecha.getHours();
   if (hora < 8) return "P3";
   if ((hora >= 10 && hora < 14) || (hora >= 18 && hora < 22)) return "P1";
@@ -225,13 +253,52 @@ export function resumenPorDia(registros, unidadesRol) {
   for (const punto of registros) {
     const clave = claveDia(punto.instante);
     if (!dias.has(clave)) {
-      dias.set(clave, { clave, fecha: new Date(punto.instante), produccion: 0, consumo: 0, importada: 0, exportada: 0, autoconsumo: 0 });
+      dias.set(clave, { clave, fecha: new Date(punto.instante), produccion: 0, consumo: 0, importada: 0, exportada: 0, autoconsumo: 0, redCasa: 0 });
     }
     const dia = dias.get(clave);
-    for (const rol of ["produccion", "consumo", "importada", "exportada", "autoconsumo"]) {
+    for (const rol of ["produccion", "consumo", "importada", "exportada", "autoconsumo", "redCasa"]) {
       const unidad = unidadesRol[rol];
       dia[rol] += unidad === "kWh" ? punto[rol] || 0 : ((punto[rol] || 0) * punto.horas) / 1000;
     }
   }
   return [...dias.values()].sort((a, b) => a.fecha - b.fecha);
+}
+
+export function coberturaPeriodo(registros, desde, hasta) {
+  const inicio = +desde, fin = +hasta;
+  const intervalos = registros
+    .filter((p) => Number.isFinite(p.horas) && p.horas > 0)
+    .map((p) => [Math.max(+p.instante, inicio), Math.min(+p.instante + p.horas * 3600000, fin)])
+    .filter(([a, b]) => b > a)
+    .sort(([a], [b]) => a - b);
+  let limite = inicio, cubierto = 0;
+  for (const [a, b] of intervalos) {
+    cubierto += Math.max(0, b - Math.max(limite, a));
+    limite = Math.max(limite, b);
+  }
+  const esperadas = (fin - inicio) / 3600000;
+  const horas = cubierto / 3600000;
+  return { horas, esperadas, porcentaje: esperadas > 0 ? horas / esperadas * 100 : 0, completa: esperadas > 0 && esperadas - horas < 1 / 60 };
+}
+
+export function resumirContador(registros, festivos = new Set(), rango = null) {
+  const ordenados = normalizarInstantes(registros);
+  const primero = ordenados[0]?.instante;
+  const desde = rango?.desde ?? (primero && new Date(primero.getFullYear(), primero.getMonth(), 1));
+  const hasta = rango?.hasta ?? (primero && new Date(primero.getFullYear(), primero.getMonth() + 1, 1));
+  const puntos = ordenados.filter((p) => +p.instante >= +desde && +p.instante < +hasta);
+  const resumen = { P1: 0, P2: 0, P3: 0, total: 0, vertido: 0, horas: puntos.length, estimadas: 0, dias: 0 };
+  const dias = new Set();
+  for (const p of puntos) {
+    resumen[periodoTarifa(p.instante, festivos)] += p.consumo;
+    resumen.total += p.consumo;
+    resumen.vertido += p.vertido;
+    if (!p.real) resumen.estimadas++;
+    dias.add(claveDia(p.instante));
+  }
+  resumen.dias = dias.size;
+  resumen.cobertura = desde && hasta
+    ? coberturaPeriodo(puntos.map((p) => ({ ...p, horas: 1 })), desde, hasta)
+    : { horas: 0, esperadas: 0, porcentaje: 0, completa: false };
+  return resumen;
 }

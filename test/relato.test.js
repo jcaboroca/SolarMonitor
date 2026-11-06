@@ -6,7 +6,7 @@ process.env.TZ = "Europe/Madrid";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { detectarMomentos } from "../js/relato.js";
-import { construirSerie, detectarRoles, unidadDeCabecera, resumenPorDia } from "../js/datos.js";
+import { construirSerie, detectarRoles, unidadDeCabecera, resumenPorDia, repartoCasa } from "../js/datos.js";
 import { formatear } from "../js/arco.js";
 
 const H = 3600000;
@@ -95,6 +95,11 @@ function minutosValidos(registros) {
 }
 function valorEsperado(c, registros, u) {
   let m;
+  if ((m = c.ruta.match(/^repartoCasa\(registros\[(\d+)\]\)\.(\w+)\/registros\[(\d+)\]\.consumo$/))) {
+    assert.equal(m[1], m[3]);
+    const r = registros[+m[1]];
+    return repartoCasa(r)[m[2]] / r.consumo * 100;
+  }
   if ((m = c.ruta.match(/^registros\[(\d+)\]\.instante$/))) return registros[+m[1]].instante.getTime();
   if ((m = c.ruta.match(/^fin\(registros\[(\d+)\]\)$/))) {
     const r = registros[+m[1]];
@@ -145,8 +150,9 @@ function comprobarTrazabilidad(resultado, s) {
     for (const c of m.cifras) {
       assert.ok(!ids.has(c.id), `id repetido ${c.id}`);
       ids.add(c.id);
-      assert.equal(c.clase, c.ruta === "dia" ? "calculo" : "medido", c.id);
-      assert.equal(c.procedencia, c.ruta === "dia" ? "calculo" : "serie", c.id);
+      const calculo = c.ruta === "dia" || c.ruta.startsWith("repartoCasa(");
+      assert.equal(c.clase, calculo ? "calculo" : "medido", c.id);
+      assert.equal(c.procedencia, calculo ? "calculo" : "serie", c.id);
       assert.equal(c.texto, formatear(c.valor, c.unidad, c.decimales), c.id);
       const esperado = valorEsperado(c, s.registros, s.unidadesRol);
       assert.ok(Math.abs(c.valor - esperado) < 1e-9, `${c.id}: ${c.valor} ≠ ${esperado}`);
@@ -186,7 +192,7 @@ for (const kwh of [false, true]) {
     assert.equal(momento(r, "cubre").detalle, "Producción 1,50 kW, consumo 0,40 kW.");
     assert.equal(momento(r, "carga").titulo, "La batería empieza a cargar");
     assert.equal(momento(r, "carga").detalle, "Entra a 1,10 kW. Estaba al 20 %.");
-    assert.equal(momento(r, "llena").titulo, "La batería se llena");
+    assert.equal(momento(r, "llena").titulo, "El nivel de batería indica carga completa");
     assert.equal(momento(r, "llena").detalle, "Al 98 % a las 12:00. Desde aquí, lo que sobra va a la red.");
     assert.equal(momento(r, "vertido").titulo, "Empiezas a verter a la red");
     assert.equal(momento(r, "vertido").detalle, `Hoy vertiste ${kwh1(dia.exportada)} registrados.`);
@@ -330,9 +336,9 @@ test("hueco: el detalle de los picos menciona el tiempo sin datos", () => {
   const s = serie(filasDe(soleado, { quitar: (t) => t >= 600 && t < 660 }));
   const r = detectar(s);
   assert.equal(r.calidad.huecos.length, 1);
-  assert.equal(momento(r, "picoProduccion").detalle, "A las 13:40. El día tiene 58 min sin datos.");
-  assert.match(momento(r, "resumen").detalle, / Datos de 23 h 2 min de 24 h\.$/);
-  assert.equal(momento(r, "picoConsumo").detalle, "26 % lo puso el sol, 74 % la batería y 0 % la red. El día tiene 58 min sin datos.");
+  assert.equal(momento(r, "picoProduccion").detalle, "A las 13:40. El día tiene 1 h sin datos.");
+  assert.match(momento(r, "resumen").detalle, / Datos de 23 h de 24 h\.$/);
+  assert.equal(momento(r, "picoConsumo").detalle, "26 % lo puso el sol, 74 % la batería y 0 % la red. El día tiene 1 h sin datos.");
   comprobarTrazabilidad(r, s);
 });
 
@@ -404,7 +410,7 @@ test("consumo sin producción disponible: tampoco cubre, deja ni pico de consumo
 
 // --- Cambio horario (§4.3.1) -----------------------------------------------------------------
 
-test("día de 25 h con la 02 h duplicada por el Excel: aviso específico y duracionDia 25", () => {
+test("día de 25 h conserva ambas ocurrencias de las 02 h del Excel", () => {
   const fecha = [2026, 10, 25];
   const filas = filasDe(soleado, { fecha, texto: true });
   const k = filas.findIndex((f) => f[0].endsWith(" 03:00:00"));
@@ -412,11 +418,22 @@ test("día de 25 h con la 02 h duplicada por el Excel: aviso específico y durac
   const s = serie(filas);
   const r = detectar(s);
   assert.equal(r.calidad.duracionDia, 25);
-  assert.equal(r.calidad.duplicadosHoraRepetida, 12);
+  assert.equal(r.calidad.duplicadosHoraRepetida, 0);
+  assert.ok(Math.abs(r.calidad.cobertura - 25) < 1e-8);
   const resumen = momento(r, "resumen").detalle;
-  assert.match(resumen, /La hora repetida del cambio llega duplicada en el Excel: 12 registros sin duración\.$/);
+  assert.doesNotMatch(resumen, /registros sin duración/);
   assert.doesNotMatch(resumen, /Datos de/);
   assert.doesNotMatch(momento(r, "picoProduccion").detalle, /sin datos/);
+  comprobarTrazabilidad(r, s);
+});
+
+test("un salto de SOC no demuestra que la bateria se haya llenado fisicamente", () => {
+  const s = serie(filasDe((t) => ({ ...soleado(t), s: t < 675 ? 15 : 100 })));
+  const r = detectar(s);
+  assert.equal(r.calidad.saltosSoc.length, 1);
+  assert.match(momento(r, "llena").detalle, /cambio brusco/i);
+  assert.doesNotMatch(momento(r, "llena").titulo, /se llena/);
+  assert.match(r.resumen.detalle, /no confirma.*avería/i);
   comprobarTrazabilidad(r, s);
 });
 

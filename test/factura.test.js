@@ -90,8 +90,8 @@ test("Octopus: excedentes, Solar Wallet, impuestos y total", () => {
 
 test("Octopus: lecturas de la tabla del contador", () => {
   const f = interpretarFactura(OCTOPUS);
-  assert.deepEqual(f.lecturas.P1, { inicial: 9784, final: 9785, consumo: 1, estimada: true });
-  assert.deepEqual(f.lecturas.P3, { inicial: 5996, final: 5998, consumo: 2, estimada: true });
+  assert.deepEqual(f.lecturas.P1, { inicial: 9784, final: 9785, consumo: 1, estimada: false });
+  assert.deepEqual(f.lecturas.P3, { inicial: 5996, final: 5998, consumo: 2, estimada: false });
 });
 
 test("Octopus: la factura cuadra consigo misma", () => {

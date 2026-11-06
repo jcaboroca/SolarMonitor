@@ -1,5 +1,70 @@
 // Extrae el texto del PDF de la factura con pdf.js y busca los importes de una
 // 2.0TD. Lo que encuentre es solo una propuesta: siempre se puede corregir.
+import { coberturaPeriodo, energiaKwh, repartoPorPeriodo, resumirContador } from "./datos.js";
+
+export function periodoFactura(factura) {
+  if (!factura?.desde || !factura?.hasta) return null;
+  const desde = new Date(factura.desde), hasta = new Date(factura.hasta);
+  if (!Number.isFinite(+desde) || !Number.isFinite(+hasta) || hasta < desde) return null;
+  if (factura.comercializadora !== "Octopus") hasta.setDate(hasta.getDate() + 1);
+  return hasta > desde ? { desde, hasta } : null;
+}
+
+export function diferenciaEnergia(facturado, medido) {
+  const diferencia = facturado - medido;
+  return { diferencia, relativo: medido > 0 ? diferencia / medido * 100 : diferencia === 0 ? 0 : null };
+}
+
+export function cotejarFactura(factura, serie, curva = [], festivos = new Set()) {
+  const periodo = periodoFactura(factura);
+  const primero = serie?.registros[0]?.instante ?? curva[0]?.instante;
+  const rango = periodo ?? (primero ? {
+    desde: new Date(primero.getFullYear(), primero.getMonth(), 1),
+    hasta: new Date(primero.getFullYear(), primero.getMonth() + 1, 1),
+  } : null);
+  if (!rango) return { periodoConocido: false, rango: null, solarman: null, contador: null, coberturaSolarman: null };
+  const registros = (serie?.registros || []).map((p) => {
+    const inicio = Math.max(+p.instante, +rango.desde);
+    const fin = Math.min(+p.instante + p.horas * 3600000, +rango.hasta);
+    const horas = Math.max(0, fin - inicio) / 3600000;
+    const recortado = { ...p, instante: new Date(inicio), horas };
+    for (const [rol, unidad] of Object.entries(serie.unidadesRol)) {
+      if (unidad === "kWh" && p.horas > 0) recortado[rol] = p[rol] * horas / p.horas;
+    }
+    return recortado;
+  }).filter((p) => p.horas > 0);
+  const reparto = repartoPorPeriodo(registros, "importada", serie?.unidadesRol.importada, festivos);
+  return {
+    periodoConocido: Boolean(periodo), rango,
+    solarman: serie ? {
+      ...reparto, total: reparto.P1 + reparto.P2 + reparto.P3,
+      excedentes: energiaKwh(registros, "exportada", serie.unidadesRol.exportada),
+    } : null,
+    coberturaSolarman: coberturaPeriodo(registros, rango.desde, rango.hasta),
+    contador: resumirContador(curva, festivos, rango),
+  };
+}
+
+export function diagnosticoCotejo(facturado, cotejo) {
+  if (!Number.isFinite(facturado.total)) return { tono: "regular", mensaje: "Introduce los kWh de la factura para cotejar." };
+  if (!cotejo?.periodoConocido) return { tono: "regular", mensaje: "Periodo de factura sin verificar: no se puede confirmar la comparación. Revisa las fechas del PDF." };
+  const contador = cotejo.contador;
+  if (!contador?.cobertura?.completa) return {
+    tono: "regular",
+    mensaje: "Datadis no cubre todo el periodo facturado. Descarga la curva completa; los datos de Solarman son orientativos y no bastan para validar la factura.",
+  };
+  if (contador.estimadas) return {
+    tono: "regular",
+    mensaje: `Datadis contiene ${contador.estimadas} horas estimadas. El cotejo es provisional hasta disponer de lecturas reales.`,
+  };
+  const distintos = Object.entries(facturado).filter(([clave, valor]) => {
+    const medido = contador[clave === "excedentes" ? "vertido" : clave];
+    return Number.isFinite(valor) && Number.isFinite(medido) && Math.abs(valor - medido) > (Number.isInteger(valor) ? 1 : 0.011);
+  });
+  return distintos.length
+    ? { tono: "regular", mensaje: `La factura y Datadis difieren en ${distintos.map(([clave]) => clave).join(", ")} para el mismo periodo. Revisa los redondeos y posibles revisiones antes de reclamar.` }
+    : { tono: "bien", mensaje: `La factura y Datadis coinciden dentro del redondeo: ${contador.total.toLocaleString("es-ES", { maximumFractionDigits: 3 })} kWh comprados, con ${contador.horas} horas reales del mismo periodo.` };
+}
 
 // pdf.js se carga al leer el primer PDF: asi el lector se puede probar en Node.
 async function cargarPdfjs() {
@@ -308,9 +373,9 @@ function interpretarOctopus(plano, r) {
     r.iva = aNumeroEspanol(iva[3]);
   }
 
-  // "Calculada" o "Estimada" no es una lectura real del contador.
   const procedencia = plano.match(/Procedencia:\s*(\S+)/i);
-  const estimada = procedencia ? !/^real/i.test(procedencia[1]) : false;
+  r.procedencia = procedencia?.[1] ?? null;
+  const estimada = /^estimad/i.test(r.procedencia || "");
   const anterior = numerosDeFila(plano, "Lectura\\s+Anterior");
   const actual = numerosDeFila(plano, "Lectura\\s+Actual");
   const leido = numerosDeFila(plano, "Consumo\\s+kWh");

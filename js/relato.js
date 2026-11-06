@@ -4,7 +4,7 @@
 // suma de un tramo, para comprobarla contra los datos y no contra el texto.
 
 import { formatear } from "./arco.js";
-import { periodoTarifa, resumenPorDia } from "./datos.js";
+import { periodoTarifa, resumenPorDia, repartoCasa } from "./datos.js";
 
 const H = 3600000;
 const MIN = 60000;
@@ -77,7 +77,7 @@ export function detectarMomentos(registros, unidadesRol = {}, { festivos = new S
   if (!n) {
     return {
       momentos: [], pasos: [], relato: false, motivo: "No hay registros de este día.", resumen: null,
-      calidad: { duracionDia: null, cobertura: 0, huecos: [], rolesDisponibles: [], duplicadosHoraRepetida: 0 },
+      calidad: { duracionDia: null, cobertura: 0, huecos: [], rolesDisponibles: [], duplicadosHoraRepetida: 0, saltosSoc: [] },
     };
   }
 
@@ -109,6 +109,14 @@ export function detectarMomentos(registros, unidadesRol = {}, { festivos = new S
   const hueco = lista.map((x, k) => k > 0 && x.t - lista[k - 1].t > 1.5 * paso);
   const huecos = [];
   for (let k = 1; k < n; k++) if (hueco[k]) huecos.push({ desde: new Date(lista[k - 1].t), hasta: new Date(lista[k].t) });
+  const saltosSoc = [];
+  for (let k = 1; k < n; k++) {
+    const minutos = (lista[k].t - lista[k - 1].t) / MIN;
+    if (minutos > 0 && minutos <= 10 && !hueco[k] && valido("soc", reg(k - 1).soc) && valido("soc", reg(k).soc)
+      && Math.abs(reg(k).soc - reg(k - 1).soc) >= 20) {
+      saltosSoc.push({ indice: lista[k].indice, desde: reg(k - 1).soc, hasta: reg(k).soc });
+    }
+  }
 
   const sumaHoras = lista.reduce((s, _, k) => s + horas(k), 0);
   const cubiertos = Math.min(Math.floor(Math.round(sumaHoras * 3600) / 60), duracionDia * 60);
@@ -264,8 +272,9 @@ export function detectarMomentos(registros, unidadesRol = {}, { festivos = new S
       if (confirmaAntes(k, lleno)) {
         let detalle = "Al {llena:soc} a las {llena:hora}.";
         const sobra = rachasVertido.some((r) => r.a >= k && lista[r.a].t - lista[k].t <= 15 * MIN && sinHueco(k, r.a));
-        if (sobra) detalle += " Desde aquí, lo que sobra va a la red.";
-        anotar("llena", k, "La batería se llena", detalle, [cSoc("llena:soc", k), cHora("llena:hora", k)]);
+        if (saltosSoc.some((s) => s.indice === ind(k))) detalle += " Hay un cambio brusco del nivel indicado: no confirma una carga física.";
+        else if (sobra) detalle += " Desde aquí, lo que sobra va a la red.";
+        anotar("llena", k, "El nivel de batería indica carga completa", detalle, [cSoc("llena:soc", k), cHora("llena:hora", k)]);
       }
     } else {
       let max = -1;
@@ -318,8 +327,9 @@ export function detectarMomentos(registros, unidadesRol = {}, { festivos = new S
       const cifras = [cKw("picoConsumo:potencia", k, "consumo")];
       let detalle;
       if (conReparto) {
-        const parte = (id, rol) => cifra(`picoConsumo:${id}`, (r[rol] / r.consumo) * 100, "%", 0,
-          `registros[${ind(k)}].${rol}/registros[${ind(k)}].consumo`, { instante: instante(k) });
+        const reparto = repartoCasa(r);
+        const parte = (id, rol) => cifra(`picoConsumo:${id}`, (reparto[rol] / r.consumo) * 100, "%", 0,
+          `repartoCasa(registros[${ind(k)}]).${rol}/registros[${ind(k)}].consumo`, { instante: instante(k), clase: "calculo", procedencia: "calculo" });
         cifras.push(parte("sol", "solarDirecta"), parte("bateria", "descarga"), parte("red", "importada"));
         detalle = "{picoConsumo:sol} lo puso el sol, {picoConsumo:bateria} la batería y {picoConsumo:red} la red.";
       } else {
@@ -452,6 +462,7 @@ export function detectarMomentos(registros, unidadesRol = {}, { festivos = new S
       partes.push("{resumen:autoconsumo} autoconsumo");
     }
     let detalle = partes.length ? `${partes.join(" · ")}.` : "No hay cifras registradas que sumar.";
+    if (saltosSoc.length) detalle += " El nivel de batería presenta cambios bruscos: esto no confirma una carga física ni una avería. Conviene revisar la estimación de carga con el instalador.";
     if (duplicadosHoraRepetida) {
       detalle += ` La hora repetida del cambio llega duplicada en el Excel: ${duplicadosHoraRepetida} registros sin duración.`;
     } else if (cubiertos < duracionDia * 60) {
@@ -493,6 +504,7 @@ export function detectarMomentos(registros, unidadesRol = {}, { festivos = new S
       huecos,
       rolesDisponibles: ROLES.filter((rol) => disponible[rol]),
       duplicadosHoraRepetida,
+      saltosSoc,
     },
   };
 }
