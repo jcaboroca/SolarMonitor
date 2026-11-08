@@ -123,17 +123,26 @@ export function seleccionar(resumen, ayer, maximo) {
     if (dia < INICIO) break;
     if (!(dia in dias) || incompleto(resumen, dia)) if ((intentos[dia] || 0) < MAX_INTENTOS) recientes.push(dia);
   }
-  // Ayer, aunque este completo, se vuelve a pedir cada vuelta mientras siga siendo ayer: el portal puede corregir
-  // valores. Son como mucho unas 24 peticiones y, si nada cambia, no se escribe nada.
+  // Ayer, aunque este completo, se vuelve a pedir en su turno: el portal puede corregir valores.
   if (!recientes.includes(ayer) && resumen?.fuente?.dia === ayer && ayer >= INICIO && (intentos[ayer] || 0) < MAX_INTENTOS) recientes.unshift(ayer);
   const atrasado = pendientes(resumen, ayer, maximo).filter((d) => !recientes.includes(d));
+  if (maximo === 1) {
+    // Con un solo hueco, reservar siempre el primero para ayer impide avanzar las otras colas.
+    const colas = [recientes.filter((d) => d === ayer), recientes.filter((d) => d !== ayer), atrasado];
+    const turno = resumen?.turnoArchivo || 0;
+    for (let i = 0; i < colas.length; i++) {
+      const cola = colas[(turno + i) % colas.length];
+      if (cola.length) return [cola[0]];
+    }
+    return [];
+  }
   const cupo = Math.ceil(maximo / 2);
   const lista = [...recientes.slice(0, cupo), ...atrasado.slice(0, maximo)].slice(0, maximo);
   for (const d of recientes.slice(cupo)) if (lista.length < maximo) lista.push(d);
   return lista;
 }
 
-export async function archivar(entorno, { ahora = Date.now(), pedir = fetch, maximo = 2 } = {}) {
+export async function archivar(entorno, { ahora = Date.now(), pedir = fetch, maximo = 2, maxMigracion = LOTE_MIGRACION } = {}) {
   const kv = entorno.HISTORICO;
   const sesion = await kv.get("solarman-sesion", "json");
   if (!sesion?.access || sesion.caduca <= ahora || !entorno.SOLARMAN_PLANTA) return { resultado: "sin sesion" };
@@ -144,7 +153,9 @@ export async function archivar(entorno, { ahora = Date.now(), pedir = fetch, max
   resumen.intentos = resumen.intentos || {};
   resumen.diarios = resumen.diarios || {};
   const lista = seleccionar(resumen, ayer, maximo);
-  const migrar = pendientesMigracion(resumen, ayer).filter((d) => !lista.includes(d)).slice(0, LOTE_MIGRACION);
+  const iniciarAyer = resumen.fuente?.dia !== ayer && !!resumen.diarios[ayer] && resumen.dias[ayer] > 0 && !lista.includes(ayer);
+  const pendientesLocales = pendientesMigracion(resumen, ayer).filter((d) => !lista.includes(d));
+  let migrar = [...(iniciarAyer ? [ayer] : []), ...pendientesLocales].slice(0, maxMigracion);
 
   const archivos = new Map();
   const sucios = new Set();
@@ -155,12 +166,13 @@ export async function archivar(entorno, { ahora = Date.now(), pedir = fetch, max
     return archivos.get(mes);
   };
   // Ayer ya resumido (heredado) pero sin instantanea ni marca: se inicializa desde su curva guardada, sin
-  // descargar, para que entre en las revisitas horarias como cualquier ayer.
-  const iniciarAyer = resumen.fuente?.dia !== ayer && !!resumen.diarios[ayer] && resumen.dias[ayer] > 0 && !lista.includes(ayer) && !migrar.includes(ayer);
-  if (!lista.length && !migrar.length) {
-    if (!iniciarAyer || !(await curvaDe(ayer.slice(0, 7))).dias[ayer.slice(8)]?.length) return { resultado: "al dia" };
+  // descargar y dentro del cupo de migracion, para que entre en las revisitas como cualquier ayer.
+  if (iniciarAyer && migrar.includes(ayer) && !(await curvaDe(ayer.slice(0, 7))).dias[ayer.slice(8)]?.length) {
+    migrar = pendientesLocales.slice(0, maxMigracion);
   }
+  if (!lista.length && !migrar.length) return { resultado: "al dia" };
   for (const dia of lista) {
+    if (maximo === 1) resumen.turnoArchivo = dia === ayer ? 1 : dia >= restarDias(ayer, DIAS_RECIENTES - 1) ? 2 : 0;
     const [a, m, d] = dia.split("-").map(Number);
     const respuesta = await pedir(`${BASE}/maintain-s/history/power/${encodeURIComponent(entorno.SOLARMAN_PLANTA)}/record?year=${a}&month=${m}&day=${d}`, {
       headers: { Authorization: `Bearer ${sesion.access}`, Accept: "application/json" },
@@ -197,7 +209,7 @@ export async function archivar(entorno, { ahora = Date.now(), pedir = fetch, max
     else if (reciente) resumen.intentos[dia] = (resumen.intentos[dia] || 0) + 1;
   }
   // Migracion incremental: resume desde la curva ya guardada, sin descargar nada.
-  for (const dia of iniciarAyer ? [...migrar, ayer] : migrar) {
+  for (const dia of migrar) {
     const curva = await curvaDe(dia.slice(0, 7));
     const puntos = curva.dias[dia.slice(8)] || [];
     const integrado = integrarDia(puntos, dia);

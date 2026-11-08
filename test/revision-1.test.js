@@ -164,7 +164,7 @@ async function archivarCon(kv, puntos, opciones = {}) {
 }
 
 test("R4: 288 filas con cobertura solar cero no cierran ayer y una correccion posterior se recupera", async () => {
-  const kv = kvFalso(sesion);
+  const kv = kvSoloAyer();
   let { llamadas } = await archivarCon(kv, sinSolar());
   assert.equal(llamadas, 1);
   assert.equal(kv.leer(RESUMEN).dias[AYER], 288);
@@ -179,7 +179,7 @@ test("R4: 288 filas con cobertura solar cero no cierran ayer y una correccion po
 });
 
 test("R4: la revisita con la misma cantidad de filas pero menos cobertura no sustituye lo bueno", async () => {
-  const kv = kvFalso(sesion);
+  const kv = kvSoloAyer();
   const mediaManana = conSolar().map((p, i) => (i >= 144 ? [p[0], null, ...p.slice(2)] : p));
   await archivarCon(kv, mediaManana);
   assert.equal(kv.leer(RESUMEN).diarios[AYER].cob.solar, 0.5);
@@ -234,13 +234,21 @@ test("R4: un dia con curva y sin resumen de cobertura no se descarga: lo mide la
 const CONFIG = { activo: true, pushActivo: false, consentimiento: true, ubicacion: null, tarifa: PLANA };
 const noMeteo = async () => new Response("{}", { status: 500 });
 
+// Aislar las correcciones de ayer de la rotacion de colas, cubierta en sus propias regresiones.
+function kvSoloAyer(extra = {}) {
+  const dias = {};
+  for (let d = "2026-05-01"; d < AYER; d = sumarDias(d, 1)) dias[d] = 0;
+  const intentos = Object.fromEntries(Array.from({ length: 6 }, (_, i) => [sumarDias(AYER, -i - 1), MAX_INTENTOS]));
+  return kvFalso({ ...sesion, [RESUMEN]: { dias, intentos, diarios: {}, horas: [] }, ...extra });
+}
+
 async function paso(kv, puntos, ahora = AHORA) {
   await archivar({ HISTORICO: kv, SOLARMAN_PLANTA: "1" }, { pedir: async () => json(registros(puntos)), ahora, maximo: 1 });
   return programado({ HISTORICO: kv }, { ahora, pedir: noMeteo });
 }
 
 test("R2: el informe parcial se regenera cuando el archivo mejora y conserva el historial", async () => {
-  const kv = kvFalso({ ...sesion, "informe-config": CONFIG });
+  const kv = kvSoloAyer({ "informe-config": CONFIG });
   const completos = conSolar();
   assert.equal((await paso(kv, completos.slice(0, 200))).resultado, "generado");
   assert.equal(kv.leer(`informe-${AYER}`).estado, "parcial");
@@ -257,7 +265,7 @@ test("R2: el informe parcial se regenera cuando el archivo mejora y conserva el 
 });
 
 test("R2: sin mejora en el archivo no se regenera y las regeneraciones estan acotadas", async () => {
-  const kv = kvFalso({ ...sesion, "informe-config": CONFIG });
+  const kv = kvSoloAyer({ "informe-config": CONFIG });
   const completos = conSolar();
   await paso(kv, completos.slice(0, 100));
   const escrituras = kv.escrituras.length;
@@ -269,7 +277,7 @@ test("R2: sin mejora en el archivo no se regenera y las regeneraciones estan aco
 });
 
 test("R2: una generacion manual anterior a las 08:30 no impide la actualizacion programada", async () => {
-  const kv = kvFalso({ ...sesion, "informe-config": CONFIG });
+  const kv = kvSoloAyer({ "informe-config": CONFIG });
   const completos = conSolar();
   await archivar({ HISTORICO: kv, SOLARMAN_PLANTA: "1" }, { pedir: async () => json(registros(completos.slice(0, 150))), ahora: AHORA - 5400000, maximo: 1 });
   await generarInforme({ HISTORICO: kv }, { ahora: AHORA - 5400000, pedir: noMeteo });
@@ -289,7 +297,7 @@ test("R2: al regenerar no se duplica el aviso ya enviado y se conserva el estado
   const ecdh = createECDH("prime256v1");
   ecdh.generateKeys();
   const sub = { id: "d1", endpoint: "https://web.push.apple.com/x", keys: { p256dh: b64url(ecdh.getPublicKey()), auth: b64url(randomBytes(16)) }, creada: "2026-11-01T00:00:00.000Z", entrega: {} };
-  const kv = kvFalso({ ...sesion, "informe-config": { ...CONFIG, pushActivo: true }, "informe-subs": { dispositivos: [sub] } });
+  const kv = kvSoloAyer({ "informe-config": { ...CONFIG, pushActivo: true }, "informe-subs": { dispositivos: [sub] } });
   let envios = 0;
   const pedir = async (url) => (url.includes("push.apple.com") ? (envios++, new Response(null, { status: 201 })) : noMeteo());
   const completos = conSolar();

@@ -2,7 +2,7 @@ process.env.TZ = "UTC"; // el worker corre en UTC: todo lo local debe ir explici
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { limitesDia, diaMadrid, sumarDias, tipoDia, periodoMadrid } from "../worker/src/horario.js";
-import { integrarDia, evaluarTarifa, costeDia, construirInforme, compararDias, acumuladoMes } from "../worker/src/informe-calculo.js";
+import { integrarDia, evaluarTarifa, costeDia, construirInforme, compararDias, acumuladoMes, esDependencia } from "../worker/src/informe-calculo.js";
 
 // Puntos cada 5 minutos con potencias constantes entre dos instantes locales de Madrid.
 function dia(fecha, { paso = 300, valores = {}, saltar = () => false } = {}) {
@@ -35,6 +35,20 @@ test("periodo 2.0TD segun la hora de Madrid, no la del proceso", () => {
   assert.equal(periodoMadrid(Date.UTC(2026, 10, 6, 6, 0)), "P3"); // 07:00 Madrid
   assert.equal(periodoMadrid(Date.UTC(2026, 10, 7, 9, 0)), "P3");
   assert.equal(periodoMadrid(Date.UTC(2026, 7, 11, 8, 0)), "P1"); // 10:00 CEST
+});
+
+test("las dependencias se recalculan al alternar informes de fechas y meses distintos", () => {
+  for (const [dia, fecha, esperado] of [
+    ["2026-11-05", "2026-11-07", true],
+    ["2026-10-06", "2026-11-07", true],
+    ["2026-10-08", "2026-11-07", false],
+    ["2026-09-06", "2026-11-07", false],
+    ["2026-11-05", "2026-12-07", true],
+    ["2026-10-06", "2026-12-07", false],
+    ["2026-12-31", "2027-01-01", false],
+    ["2026-10-06", "2026-11-07", true],
+    ["2026-11-07", "2026-11-07", false],
+  ]) assert.equal(esDependencia(dia, fecha), esperado, `${dia} / ${fecha}`);
 });
 
 test("integra un dia completo sin inventar energia", () => {
@@ -223,6 +237,19 @@ test("con tarifa valida el ranking es por euros", () => {
   assert.equal(i.ranking.criterio, "euros");
   assert.equal(i.ranking.horas[0].hora, "11");
   assert.ok(i.ranking.horas[0].euros > 0);
+});
+
+test("los empates del ranking conservan el orden UTC de las dos horas 02 del cambio de invierno", () => {
+  const puntos = dia("2026-10-25", { valores: { compra: 1000 } });
+  const integrado = integrarDia(puntos, "2026-10-25");
+  integrado.porHora = integrado.porHora.filter((h) => h.hora === "02" || h.hora === "03").reverse();
+  const informe = construirInforme({ integrado, fecha: "2026-10-25", ahora: Date.UTC(2026, 9, 26, 7, 30), config: {} });
+  assert.deepEqual(informe.ranking.horas.map((h) => h.inicio), [
+    "2026-10-25T00:00:00.000Z",
+    "2026-10-25T01:00:00.000Z",
+    "2026-10-25T02:00:00.000Z",
+  ]);
+  assert.deepEqual(informe.ranking.horas.map((h) => h.hora), ["02", "02", "03"]);
 });
 
 test("cobertura baja: estado parcial y energia no se presenta como total", () => {

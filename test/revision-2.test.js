@@ -56,6 +56,14 @@ function kvFalso(inicial = {}) {
 
 const informe = (puntos, extra = {}) => construirInforme({ puntos, fecha: AYER, ahora: AHORA, config: { tarifa: PLANA }, ...extra });
 
+// Estas pruebas de reconciliacion aislan ayer; la rotacion entre colas se prueba por separado.
+function kvSoloAyer(extra = {}) {
+  const dias = {};
+  for (let d = "2026-05-01"; d < AYER; d = sumarDias(d, 1)) dias[d] = 0;
+  const intentos = Object.fromEntries(Array.from({ length: 6 }, (_, i) => [sumarDias(AYER, -i - 1), MAX_INTENTOS]));
+  return kvFalso({ ...sesion, [RESUMEN]: { dias, intentos, diarios: {}, horas: [] }, ...extra });
+}
+
 // ---------------------------------------------------------------- R1/R4: completitud sin redondeos
 
 test("R1: faltan 5 muestras seguidas (25 min): parcial, minimo y coste parcial, aunque la cobertura sea 98,26 %", () => {
@@ -117,7 +125,7 @@ async function ciclo(kv, puntos, ahora = AHORA, extra = {}) {
 const ayerBase = (compra, n = 288) => dia(AYER, { valores: { solar: 0, casa: 2000, compra, venta: 0, carga: 0, descarga: 0, soc: 50 } }).slice(0, n);
 
 test("R2: una correccion de valores con la misma cobertura regenera un informe parcial", async () => {
-  const kv = kvFalso({ ...sesion, "informe-config": CONFIG });
+  const kv = kvSoloAyer({ "informe-config": CONFIG });
   assert.equal((await ciclo(kv, ayerBase(1000, 200))).resultado, "generado");
   assert.equal(kv.leer(`informe-${AYER}`).energia.compra.kwh, 16.67);
   const r = await ciclo(kv, ayerBase(2000, 200), AHORA + 3600000);
@@ -126,7 +134,7 @@ test("R2: una correccion de valores con la misma cobertura regenera un informe p
 });
 
 test("R2: una muestra adicional (mejora minima de cobertura) tambien regenera", async () => {
-  const kv = kvFalso({ ...sesion, "informe-config": CONFIG });
+  const kv = kvSoloAyer({ "informe-config": CONFIG });
   await ciclo(kv, ayerBase(1000, 201));
   const antes = kv.leer(`informe-${AYER}`).energia.compra.kwh;
   const r = await ciclo(kv, ayerBase(1000, 202), AHORA + 3600000);
@@ -135,7 +143,7 @@ test("R2: una muestra adicional (mejora minima de cobertura) tambien regenera", 
 });
 
 test("R2: un informe completo tambien se regenera si el portal corrige valores despues", async () => {
-  const kv = kvFalso({ ...sesion, "informe-config": CONFIG });
+  const kv = kvSoloAyer({ "informe-config": CONFIG });
   await ciclo(kv, ayerBase(1000));
   assert.equal(kv.leer(`informe-${AYER}`).estado, "ok");
   const r = await ciclo(kv, ayerBase(1500), AHORA + 3600000);
@@ -144,7 +152,7 @@ test("R2: un informe completo tambien se regenera si el portal corrige valores d
 });
 
 test("R2: sin cambios en la fuente no se regenera ni se escribe de mas", async () => {
-  const kv = kvFalso({ ...sesion, "informe-config": CONFIG });
+  const kv = kvSoloAyer({ "informe-config": CONFIG });
   await ciclo(kv, ayerBase(1000));
   const antes = kv.escrituras.length;
   const r = await ciclo(kv, ayerBase(1000), AHORA + 3600000);
@@ -154,14 +162,14 @@ test("R2: sin cambios en la fuente no se regenera ni se escribe de mas", async (
 });
 
 test("R2: las regeneraciones por cambios de la fuente estan acotadas", async () => {
-  const kv = kvFalso({ ...sesion, "informe-config": CONFIG });
+  const kv = kvSoloAyer({ "informe-config": CONFIG });
   await ciclo(kv, ayerBase(1000));
   for (let n = 1; n <= MAX_GENERACIONES + MAX_REGENERACIONES + 3; n++) await ciclo(kv, ayerBase(1000 + n * 10), AHORA + n * 3600000);
   assert.equal(kv.leer("informe-indice").informes[0].intentos, MAX_GENERACIONES + MAX_REGENERACIONES);
 });
 
 test("R2: un cambio en los agregados de otros dias actualiza el informe dependiente", async () => {
-  const kv = kvFalso({ ...sesion, "informe-config": CONFIG });
+  const kv = kvSoloAyer({ "informe-config": CONFIG });
   await ciclo(kv, ayerBase(1000));
   const resumen = kv.leer(RESUMEN);
   const antes = kv.leer(`informe-${AYER}`).mes.actual.compra;
@@ -182,7 +190,7 @@ test("R2: al regenerar por cambio de valores no se reenvia el aviso ya entregado
   const ecdh = createECDH("prime256v1");
   ecdh.generateKeys();
   const sub = { id: "d1", endpoint: "https://web.push.apple.com/x", keys: { p256dh: b64url(ecdh.getPublicKey()), auth: b64url(randomBytes(16)) }, creada: "2026-11-01T00:00:00.000Z", entrega: {} };
-  const kv = kvFalso({ ...sesion, "informe-config": { ...CONFIG, pushActivo: true }, "informe-subs": { dispositivos: [sub] } });
+  const kv = kvSoloAyer({ "informe-config": { ...CONFIG, pushActivo: true }, "informe-subs": { dispositivos: [sub] } });
   let envios = 0;
   const pedir = async (url) => (url.includes("push.apple.com") ? (envios++, new Response(null, { status: 201 })) : noMeteo());
   const ir = async (puntos, ahora) => {
@@ -202,7 +210,7 @@ test("R2: al regenerar por cambio de valores no se reenvia el aviso ya entregado
 // ---------------------------------------------------------------- R4: reconciliacion por instante y senal
 
 test("R4: una segunda descarga con menos filas pero otro canal valido no destruye medidas ya guardadas", async () => {
-  const kv = kvFalso(sesion);
+  const kv = kvSoloAyer();
   const sinSolar = dia(AYER, { valores: () => ({ solar: null, casa: 1000, compra: 1000, venta: 0, carga: 0, descarga: 0, soc: 50 }) });
   const con250 = dia(AYER, { valores: () => ({ solar: 800, casa: 1000, compra: 1000, venta: 0, carga: 0, descarga: 0, soc: 50 }) }).slice(0, 250);
   await archivar({ HISTORICO: kv, SOLARMAN_PLANTA: "1" }, { pedir: async () => json(registros(sinSolar)), ahora: AHORA, maximo: 1 });
@@ -223,7 +231,7 @@ test("R4: una segunda descarga con menos filas pero otro canal valido no destruy
 });
 
 test("R4: una correccion con la misma cobertura actualiza los valores validos y conserva los ausentes", async () => {
-  const kv = kvFalso(sesion);
+  const kv = kvSoloAyer();
   const primera = dia(AYER, { valores: (t, n) => ({ solar: n < 144 ? 500 : null, casa: 1000, compra: 1000, venta: 0, carga: 0, descarga: 0, soc: 50 }) });
   const segunda = dia(AYER, { valores: (t, n) => ({ solar: n < 144 ? 700 : null, casa: 1000, compra: 1500, venta: 0, carga: 0, descarga: 0, soc: null }) });
   await archivar({ HISTORICO: kv, SOLARMAN_PLANTA: "1" }, { pedir: async () => json(registros(primera)), ahora: AHORA, maximo: 1 });
@@ -245,7 +253,7 @@ test("R4: los duplicados se reconcilian por instante y no inflan filas ni energi
 });
 
 test("R4: una revisita sin cambios no reescribe la curva ni deja horas residuales", async () => {
-  const kv = kvFalso(sesion);
+  const kv = kvSoloAyer();
   const lista = dia(AYER, { saltar: (n) => n >= 100 && n < 105 });
   await archivar({ HISTORICO: kv, SOLARMAN_PLANTA: "1" }, { pedir: async () => json(registros(lista)), ahora: AHORA, maximo: 1 });
   const antes = kv.escrituras.filter((k) => k === claveMes("2026-11")).length;
