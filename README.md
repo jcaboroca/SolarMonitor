@@ -253,11 +253,16 @@ Validación real del flujo por fases, 8 de noviembre de 2026:
 | Componer informe | 7,141 |
 | Avisos, con la entrega ya completada | 4,776 |
 | Cron sin trabajo pendiente, máximo observado | 3,501 |
+| Sondeo programado | 2,978 |
+| Archivo programado | 15,839 |
+| Migración programada | 34,785 |
 
 Son métricas de Cloudflare, no tiempos de respuesta HTTP; las invocaciones
 observadas no registraron errores. La calibración seguía sin datos suficientes:
 estas muestras no certifican su carga completa ni la del refresco histórico.
-Falta observar los turnos programados de archivo y migración por separado.
+El archivo y la migración superan el objetivo de 10 ms, aunque se ejecutaron
+correctamente. Se integra con esta limitación conocida; su optimización queda
+pendiente y no se considera validado el margen de CPU de todo el planificador.
 La prueba del cliente nuevo comprobó también que no se repite un aviso ya enviado
 y que no se altera el histórico cifrado.
 
