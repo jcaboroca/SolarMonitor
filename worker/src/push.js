@@ -33,6 +33,18 @@ const unir = (...trozos) => {
 const anfitrionPermitido = (h) =>
   h === "web.push.apple.com" || h.endsWith(".push.apple.com") || h === "fcm.googleapis.com" || h === "updates.push.services.mozilla.com" || h.endsWith(".push.services.mozilla.com");
 
+/** Devuelve el endpoint normalizado si es de un servicio push oficial; si no, null. */
+export function validarEndpoint(endpoint) {
+  if (typeof endpoint !== "string" || endpoint.length > 1024) return null;
+  try {
+    const url = new URL(endpoint);
+    if (url.protocol !== "https:" || url.username || url.password || url.port || !anfitrionPermitido(url.hostname)) return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
 /** Valida endpoint (solo servicios push oficiales, sin SSRF) y claves del navegador. */
 export function validarSuscripcion(s) {
   const mal = (error) => ({ ok: false, error });

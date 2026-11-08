@@ -18,4 +18,12 @@ id = "60b0b16ccce14c82bda5626468dad476"
 # Historico de Solarman: una lectura por hora (el dato en vivo se pide bajo demanda).
 # Minuto 2 para dar tiempo al datalogger a subir la lectura de la hora en punto.
 [triggers]
-crons = ["2 * * * *"]
+crons = ["2 * * * *", "30 6 * * *", "30 7 * * *"]
+
+# Informe diario de las 08:30 (Europe/Madrid). Cloudflare programa en UTC: 06:30 UTC es las
+# 08:30 en verano (CEST) y 07:30 UTC en invierno (CET). Se lanzan las dos y la guarda de hora
+# local de src/informe.js descarta la que no toca; el cron horario reintenta lo pendiente.
+# Notificaciones push (secrets; generalos con `node scripts/generar-vapid.mjs`):
+#   npx wrangler secret put VAPID_PUBLIC_KEY
+#   npx wrangler secret put VAPID_PRIVATE_KEY
+#   npx wrangler secret put VAPID_SUBJECT   (mailto:tu@correo o https://...)

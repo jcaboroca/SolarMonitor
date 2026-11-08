@@ -5,6 +5,10 @@
 import { sondear, vincular, leerEstado } from "./solarman.js";
 import { archivar, mesesArchivados, leerMes, horasArchivadas } from "./archivo.js";
 
+import { manejarInforme, programado, RUTAS_INFORME } from "./informe.js";
+
+const CRON_INFORME_A = "30 6 * * *";
+const CRON_INFORME_B = "30 7 * * *";
 const ORIGEN_WEB = "https://jcaboroca.github.io";
 // Las curvas de Solarman van a 5 minutos y abultan; KV admite hasta 25 MB.
 const LIMITE = 20 * 1024 * 1024;
@@ -14,7 +18,7 @@ const permitido = (origen) => origen === ORIGEN_WEB || /^http:\/\/(localhost|127
 
 const cabeceras = (origen) => ({
   "Access-Control-Allow-Origin": permitido(origen) ? origen : ORIGEN_WEB,
-  "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, PUT, POST, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Authorization, Content-Type",
   "Access-Control-Max-Age": "86400",
   Vary: "Origin",
@@ -38,11 +42,13 @@ export default {
     if (peticion.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
 
     const url = new URL(peticion.url);
-    const rutas = ["/historico", "/solarman/estado", "/solarman/vincular", "/solarman/curva"];
+    const rutas = ["/historico", "/solarman/estado", "/solarman/vincular", "/solarman/curva", ...RUTAS_INFORME];
     if (!rutas.includes(url.pathname)) return responder("No hay nada aqui.", 404);
 
     const credencial = (peticion.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
     if (!coincide(credencial, entorno.SOLAR_ID)) return responder("Clave incorrecta.", 401);
+
+    if (RUTAS_INFORME.includes(url.pathname)) return manejarInforme(peticion, entorno, url, responder);
 
     if (url.pathname === "/solarman/estado" && peticion.method === "GET") {
       const [estado, horasArchivo] = await Promise.all([leerEstado(entorno), horasArchivadas(entorno)]);
@@ -78,8 +84,14 @@ export default {
     return responder("Metodo no permitido.", 405);
   },
 
-  async scheduled(_evento, entorno, contexto) {
-    // Primero el dato de la hora (puede renovar la sesion) y luego lo atrasado.
-    contexto.waitUntil(sondear(entorno).then(() => archivar(entorno)));
+  async scheduled(evento, entorno, contexto) {
+    // Los dos crons de las 06:30 y 07:30 UTC solo preparan el informe (la guarda de hora de Madrid decide cual vale).
+    if (evento?.cron === CRON_INFORME_A || evento?.cron === CRON_INFORME_B) {
+      contexto.waitUntil(programado(entorno).catch(() => {}));
+      return;
+    }
+    // Primero el dato de la hora (puede renovar la sesion) y luego lo atrasado; despues el informe pendiente.
+    const base = sondear(entorno).then(() => archivar(entorno));
+    contexto.waitUntil(base.then(() => programado(entorno), (e) => programado(entorno).then(() => Promise.reject(e))));
   },
 };
