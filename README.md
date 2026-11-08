@@ -211,6 +211,12 @@ Migración de días heredados: los días con curva y sin resumen diario (de hace
 
 Rotación de la clave VAPID: el cliente guarda el endpoint antiguo antes de darlo de baja y el `PUT /informe/suscripcion` admite `reemplaza` (solo el endpoint propio, validado), de modo que con 5 dispositivos no hace falta plaza extra; si algo falla, la referencia se conserva y «Desactivar»/reintentar la limpian.
 
+Al migrar una curva local también se reconstruyen sus horas con las mismas reglas
+de intervalos que el resumen diario. Las revisitas hacen lo mismo aunque el portal
+devuelva una curva idéntica: los datos originales no cambian, pero se reparan las
+horas calculadas con reglas antiguas. Si las horas ya coinciden, no hay escritura
+adicional; tampoco se reescribe la curva mensual sin cambios.
+
 `node scripts/medir-informe.mjs` (datos sintéticos, 30 días, CPU de Node en esta
 máquina, **no** medida de Cloudflare): generar el informe cuesta ~12–24 ms en
 caliente (9–29 ms en la última medición) y ~350 ms en frío (carga de módulos); archivar un día nuevo, ~40–65 ms; el
@@ -227,10 +233,11 @@ por día; el informe, 1 escritura del informe, 1 del índice, 2 del bloqueo y 1 
 dispositivo notificado. Las regeneraciones por mejora del archivo están acotadas
 (`MAX_REGENERACIONES`, 4 extra) y no reenvían el aviso ya enviado.
 
-Tras desplegar: la calibración de la previsión solo cuenta horas archivadas con el
-formato nuevo (columna de minutos con sol medido), así que necesita ~5 días antes de
-calibrar; la comparación con el mes anterior solo usa días con `diarios`, es decir,
-archivados con esta versión.
+Tras desplegar: la calibración de la previsión solo cuenta horas archivadas o
+reconstruidas con el formato nuevo (columna de minutos con sol medido). Necesita
+unos 5 días con datos suficientes, que pueden proceder de la migración local;
+la comparación con el mes anterior solo usa días con `diarios`, descargados o
+migrados con esta versión.
 
 ### Prueba manual pendiente
 

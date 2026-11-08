@@ -147,6 +147,45 @@ test("B: ayer heredado completo se migra sin descargar, queda con instantanea y 
 
 const sumaHorasKwh = (horas, i) => horas.reduce((s, h) => s + h[i], 0) / 1000;
 
+function horasHeredadas() {
+  const { inicio } = limitesDia(AYER);
+  return Array.from({ length: 24 }, (_, i) => [
+    inicio / HORA + i, i === 23 ? 708 : 750, i === 23 ? 283 : 300, 50,
+    i === 23 ? 43 : 45, i === 23 ? 43 : 45,
+  ]);
+}
+
+for (const migrar of [false, true]) {
+  test(`C heredado: ${migrar ? "migrar la curva local" : "redescargar una curva identica"} repara las horas antiguas`, async () => {
+    const puntos = dia(AYER, { saltar: (n) => n % 2 === 1, valores: { solar: 400 } });
+    const kv = kvFalso({
+      ...sesion,
+      [RESUMEN]: {
+        dias: { [AYER]: 144 }, horas: horasHeredadas(),
+        diarios: migrar ? {} : { [AYER]: resumirDia(integrarDia(puntos, AYER)) },
+      },
+      [claveMes("2026-11")]: { columnas: [], dias: { "07": puntos } },
+    });
+    const pedir = migrar
+      ? async () => assert.fail("la migracion local no necesita descargar")
+      : async () => json(registros(puntos));
+    await archivar(entorno(kv), { ahora: AHORA, pedir, maximo: migrar ? 0 : 1 });
+    const resumen = kv.leer(RESUMEN);
+    assert.equal(resumen.diarios[AYER].casa, 12);
+    assert.equal(sumaHorasKwh(resumen.horas, 1), 12);
+    assert.equal(sumaHorasKwh(resumen.horas, 2), 4.8);
+    assert.deepEqual(resumen.horas[0].slice(1), [500, 200, 50, 30, 30]);
+    assert.deepEqual(kv.leer(claveMes("2026-11")).dias["07"], puntos);
+
+    kv.escrituras.length = 0;
+    await archivar(entorno(kv), {
+      ahora: AHORA + HORA, pedir: async () => json(registros(puntos)), maximo: 1,
+    });
+    assert.equal(sumaHorasKwh(kv.leer(RESUMEN).horas, 1), 12);
+    assert.ok(!kv.escrituras.includes(claveMes("2026-11")), "no reescribir la curva si no cambia");
+  });
+}
+
 test("C: con la mitad de las muestras ausentes las horas no inventan energia ni minutos", async () => {
   const kv = kvFalso({ ...sesion });
   const puntos = dia(AYER, { saltar: (n) => n % 2 === 1, valores: { solar: 400 } });

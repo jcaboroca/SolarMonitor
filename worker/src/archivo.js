@@ -181,13 +181,14 @@ export async function archivar(entorno, { ahora = Date.now(), pedir = fetch, max
       const fusion = reconciliar(guardada, puntos);
       const cambia = JSON.stringify(fusion) !== JSON.stringify(guardada);
       resumen.dias[dia] = fusion.length;
+      // La curva puede ser identica aunque sus horas se guardaran con reglas antiguas.
+      reconstruidas.push([dia, aHoras(fusion, dia)]);
       if (cambia || !resumen.diarios[dia] || (dia === ayer && resumen.fuente?.dia !== ayer)) {
         const integrado = integrarDia(fusion, dia);
         resumen.diarios[dia] = resumirDia(integrado);
         if (cambia) {
           curva.dias[dia.slice(8)] = fusion;
           sucios.add(mes);
-          reconstruidas.push([dia, aHoras(fusion, dia)]);
         }
         if (dia === ayer) instantanea = { integrado, h: versionIntegrado(integrado) };
       }
@@ -201,6 +202,7 @@ export async function archivar(entorno, { ahora = Date.now(), pedir = fetch, max
     const puntos = curva.dias[dia.slice(8)] || [];
     const integrado = integrarDia(puntos, dia);
     resumen.diarios[dia] ||= resumirDia(integrado);
+    if (puntos.length) reconstruidas.push([dia, aHoras(puntos, dia)]);
     if (dia === ayer && puntos.length) instantanea = { integrado, h: versionIntegrado(integrado) };
   }
   for (const mes of sucios) await kv.put(claveMes(mes), JSON.stringify(archivos.get(mes)));
