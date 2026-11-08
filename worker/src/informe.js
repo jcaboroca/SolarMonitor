@@ -93,7 +93,7 @@ function informeDeError(fecha, ahora) {
 }
 
 async function guardarIndice(kv, indice, entrada) {
-  const informes = [entrada, ...(indice?.informes || []).filter((e) => e.fecha !== entrada.fecha)].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const informes = [entrada, ...(indice?.informes || []).filter((e) => e.fecha !== entrada.fecha)].sort((a, b) => a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0);
   for (const viejo of informes.slice(MAX_INFORMES)) await kv.delete(claveInforme(viejo.fecha));
   await kv.put("informe-indice", JSON.stringify({ informes: informes.slice(0, MAX_INFORMES) }));
 }
@@ -172,7 +172,7 @@ async function refrescarAnterior(kv, indice, { fecha: ayer, ahora }) {
   const minimo = sumarDias(ayer, -DIAS_REFRESCO);
   const candidata = (indice?.informes || [])
     .filter((e) => e.fecha < ayer && e.fecha >= minimo && (e.estado === "ok" || e.estado === "parcial") && huellaDe(e)?.p && (e.refrescos || 0) < MAX_REFRESCOS)
-    .sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
+    .sort((a, b) => a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0)[0];
   if (!candidata) return null;
   const marca = await kv.get(MARCA_VERSION, "json");
   if (marca?.dia !== ayer || marca.m > 0) return null;

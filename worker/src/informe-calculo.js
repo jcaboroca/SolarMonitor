@@ -182,14 +182,19 @@ function huella(texto) {
 }
 /** Version del contenido integrado de un dia: cambia con cualquier valor, cobertura o muestra distintos. */
 export const versionIntegrado = (integrado) => huella(JSON.stringify(integrado));
+let limitesDependencias;
 /** Dias anteriores que pueden entrar en la comparacion o en el acumulado de `fecha` (superconjunto, sin mirar si estan completos). */
 export function esDependencia(dia, fecha) {
   if (!(dia < fecha)) return false;
-  const mes = fecha.slice(0, 7);
-  const anterior = sumarDias(`${mes}-01`, -1).slice(0, 7);
+  // Todos los dias del lote comparten los mismos limites; se conserva solo la ultima fecha.
+  if (limitesDependencias?.fecha !== fecha) {
+    const mes = fecha.slice(0, 7);
+    limitesDependencias = { fecha, mes, anterior: sumarDias(`${mes}-01`, -1).slice(0, 7), minimo: sumarDias(fecha, -28), tipo: tipoDia(fecha) };
+  }
+  const { mes, anterior, minimo, tipo } = limitesDependencias;
   if (dia.slice(0, 7) === mes) return true;
   if (dia.slice(0, 7) === anterior) return Number(dia.slice(8)) <= Number(fecha.slice(8));
-  return dia >= sumarDias(fecha, -28) && tipoDia(dia) === tipoDia(fecha);
+  return dia >= minimo && tipoDia(dia) === tipo;
 }
 
 /** Version de lo que de verdad usa el informe de `fecha`: los dias completos del mes, del mes anterior y de la comparacion, con sus totales. */
@@ -283,7 +288,8 @@ function ranking(integrado, coste, tarifaPrecios) {
     if (porEuros) r.euros = redondear(h.compra * conImpuestos(tarifaPrecios[periodoMadrid(h.inicio)]), 2);
     return r;
   };
-  const horas = candidatas.map(fila).sort((a, b) => (porEuros ? b.euros - a.euros || b.compraKwh - a.compraKwh : b.compraKwh - a.compraKwh) || a.inicio.localeCompare(b.inicio)).slice(0, 3);
+  // ISO UTC ya tiene orden cronologico; localeCompare inicializa ICU y agota la CPU gratuita en frio.
+  const horas = candidatas.map(fila).sort((a, b) => (porEuros ? b.euros - a.euros || b.compraKwh - a.compraKwh : b.compraKwh - a.compraKwh) || (a.inicio < b.inicio ? -1 : a.inicio > b.inicio ? 1 : 0)).slice(0, 3);
   return { criterio: porEuros ? "euros" : "kwh", horas, nota: porEuros ? undefined : "Sin precios validos: se ordenan por energia comprada, no por coste." };
 }
 
