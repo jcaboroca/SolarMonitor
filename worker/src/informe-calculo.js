@@ -88,10 +88,9 @@ export function integrarDia(puntos, fecha) {
     }
   }
 
-  const socFin = (k) => {
-    const dentro = socs.filter((p) => Math.floor((p[0] - ini) / 3600) === k);
-    return dentro.length ? dentro.at(-1)[7] : null;
-  };
+  const socPorHora = new Map();
+  for (const p of socs) socPorHora.set(Math.floor((p[0] - ini) / 3600), p[7]);
+  const socFin = (k) => socPorHora.get(k) ?? null;
   const porHora = horario.map((h, k) => {
     const instante = inicio + k * 3600000;
     const fila = { indice: k, inicio: instante, hora: dosDigitos(partesMadrid(instante).hora), cobertura: {}, socFin: socFin(k) };
@@ -232,7 +231,8 @@ export function acumuladoMes({ fecha, diarios }) {
   };
 }
 
-const kwh = (x) => `${x.toLocaleString("es-ES", { maximumFractionDigits: 1 })} kWh`;
+const kwh = (x) => `${redondear(x, 1).toString().replace(".", ",")} kWh`;
+const euros = (x) => x.toFixed(2).replace(".", ",");
 
 export function construirInforme({ puntos, fecha, ahora, config = {}, diarios = {} }) {
   const integrado = integrarDia(puntos, fecha);
@@ -268,11 +268,11 @@ export function construirInforme({ puntos, fecha, ahora, config = {}, diarios = 
   if (integrado.soc) c.push({ tipo: "dato", texto: `Nivel de batería indicado: entre ${integrado.soc.min} % y ${integrado.soc.max} % (empezó en ${integrado.soc.inicio} % y acabó en ${integrado.soc.fin} %).` });
   if (rank?.horas.length) {
     const h = rank.horas[0];
-    c.push({ tipo: "patron", texto: `La hora de compra más ${rank.criterio === "euros" ? "cara" : "alta"} fue la de las ${h.hora}:00 (${kwh(h.compraKwh)}${h.euros !== undefined ? `, ≈ ${h.euros.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €` : ""})${h.motivos.length ? `: ${h.motivos.join("; ")}` : ""}.` });
+    c.push({ tipo: "patron", texto: `La hora de compra más ${rank.criterio === "euros" ? "cara" : "alta"} fue la de las ${h.hora}:00 (${kwh(h.compraKwh)}${h.euros !== undefined ? `, ≈ ${euros(h.euros)} €` : ""})${h.motivos.length ? `: ${h.motivos.join("; ")}` : ""}.` });
   }
   for (const s of integrado.saltosSoc.slice(0, 3)) c.push({ tipo: "aviso", texto: `A las ${s.hora} el nivel de batería indicado cambió de golpe de ${s.de} % a ${s.a} %. Es un cambio del valor indicado por el inversor; no se interpreta como un diagnóstico de la batería.` });
   if (coste.estado === "no_disponible") c.push({ tipo: "aviso", texto: `Coste en euros no disponible: ${coste.motivo}` });
-  else c.push({ tipo: "dato", texto: `Coste de la energía comprada ${coste.estado === "estimado" ? "(estimación con medias históricas)" : ""}: ≈ ${coste.euros.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €. ${coste.aviso}` });
+  else c.push({ tipo: "dato", texto: `Coste de la energía comprada ${coste.estado === "estimado" ? "(estimación con medias históricas)" : ""}: ≈ ${euros(coste.euros)} €. ${coste.aviso}` });
   if (comparacion) {
     const x = comparacion.metricas.compra;
     c.push({ tipo: "dato", texto: `Frente a la mediana de ${x.n} días ${comparacion.tipoDia === "finde" ? "de fin de semana o festivo" : "laborables"} recientes, compraste ${x.difKwh >= 0 ? "+" : ""}${kwh(x.difKwh)}${x.difPct !== null ? ` (${x.difPct >= 0 ? "+" : ""}${x.difPct} %)` : ""}.` });

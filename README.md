@@ -144,4 +144,77 @@ npx wrangler secret put SOLARMAN_PLANTA   # id numérico de la planta en Solarma
 npx wrangler deploy                       # incluye el cron horario
 ```
 
-Pruebas: `node --test 'test/*.test.js'`.
+## Informe diario (pestaña 06 Informe)
+
+Cada día a las 08:30 (Europe/Madrid) el Worker genera un informe de **ayer** y
+recomendaciones para **hoy**, lo guarda por fecha y, si lo activas, avisa al iPhone
+con una notificación push genérica ("Tu informe solar está disponible") que abre
+el informe de esa fecha. **No está activo por defecto**: lo activas tú en la web
+tras configurarlo. El envío puede retrasarse por el dispositivo o la red; no se
+garantiza al minuto ni exactamente una vez (la etiqueta `informe-AAAA-MM-DD`
+suprime duplicados visibles).
+
+### Fuentes y privacidad
+
+- Los datos son el archivo SolarMAN del servidor (5 min), **no** Datadis. Datadis
+  sigue siendo una descarga manual y la confirmación con él es opcional y local.
+- El paquete cifrado de `/historico` y la clave maestra no se leen ni se tocan.
+- En el servidor (KV) solo se guarda: ajustes mínimos (tarifa con vigencia y
+  origen, ubicación aproximada, activaciones), suscripciones push (máx. 5) e
+  informes generados. Nunca contraseñas de Datadis, facturas ni claves maestras.
+- Open-Meteo recibe solo latitud/longitud redondeadas, nunca consumos.
+- Todas las rutas `/informe/*` pasan por la misma autenticación que el resto;
+  los informes no son ficheros estáticos. El push no lleva consumos ni costes.
+- Sin tarifa vigente verificada no hay euros: se ordenan kWh comprados. Un precio
+  indexado solo se muestra como estimación de media histórica, nunca como factura.
+  El precio por defecto de la factura antigua no se usa como precio actual.
+
+### Despliegue
+
+```sh
+node scripts/generar-vapid.mjs            # imprime claves y comandos; no las guardes en git
+cd worker
+npx wrangler secret put VAPID_PUBLIC_KEY
+npx wrangler secret put VAPID_PRIVATE_KEY
+npx wrangler secret put VAPID_SUBJECT     # mailto:tu@correo
+npx wrangler deploy
+```
+
+Sin esas variables el push falla con un error claro (el informe sí se genera).
+Crons (UTC): `2 * * * *` (el de siempre), y `30 6 * * *` y `30 7 * * *`, dos
+candidatos para las 08:30 de Madrid (verano/invierno). Una guarda de hora local
+(≥ 08:30 Madrid) y el estado guardado evitan generar o enviar dos veces; el cron
+horario sirve de reintento acotado (4 generaciones, 3 entregas por dispositivo).
+Los endpoints 404/410 del proveedor eliminan la suscripción; solo se aceptan
+destinos Apple, FCM y Mozilla.
+
+### iPhone
+
+iOS 16.4 o superior: Safari → Compartir → **Añadir a pantalla de inicio**, abrir
+desde el icono y en Ajustes del informe pulsar **Activar avisos** (el permiso solo
+se pide con ese gesto). Si lo deniegas: Ajustes de iOS → Notificaciones → Solar
+Monitor. Hay botón de notificación de prueba y de desactivar.
+
+### Desactivar / recuperar
+
+Desmarca el informe y los avisos en la web (o `DELETE /informe/suscripcion`);
+quitar los crons `30 6/7` de `wrangler.toml` y redesplegar lo para por completo.
+Las claves VAPID se rotan con otro `secret put`; los dispositivos deben reactivar.
+
+### Límites medidos (importante)
+
+`node scripts/medir-informe.mjs` (datos sintéticos, 30 días): generar un informe
+cuesta ~70–170 ms de CPU en caliente y ~500 ms en frío en Node; el cron horario
+sin trabajo pendiente, ~0,3 ms. **Eso supera los 10 ms de CPU del plan gratuito
+de Workers**, así que la generación diaria probablemente se corte allí: es un
+bloqueo de despliegue sin resolver. Alternativas seguras: plan Workers de pago
+(30 s de CPU por defecto) o guardar resúmenes diarios precalculados en `archivar`
+y generar solo con ellos. No está medido en Cloudflare real. La comparación con el
+mes anterior no está disponible hasta que el archivo guarde totales diarios.
+
+### Prueba manual pendiente
+
+La recepción real en iPhone no está verificada: requiere desplegar tras la
+revisión y probarlo con el dispositivo del usuario.
+
+Pruebas: `node --test --test-concurrency=1 'test/*.test.js'`.

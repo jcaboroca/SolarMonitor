@@ -13,7 +13,7 @@ const SIN_AJUSTES = "Esta recomendación no cambia ningún ajuste de la batería
 
 const dosDigitos = (n) => String(n).padStart(2, "0");
 const horaTexto = (ms) => `${dosDigitos(partesMadrid(ms).hora)}:00`;
-const kwhTexto = (x) => x.toLocaleString("es-ES", { maximumFractionDigits: 1 });
+const kwhTexto = (x) => (Math.round(x * 10) / 10).toString().replace(".", ",");
 
 async function leerJson(pedir, url) {
   const r = await pedir(url, { signal: AbortSignal.timeout(5000), headers: { Accept: "application/json" } });

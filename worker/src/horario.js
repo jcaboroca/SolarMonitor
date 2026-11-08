@@ -1,18 +1,31 @@
 // Fechas y horas siempre en Europe/Madrid, de forma explicita: el worker corre en UTC
 // y el navegador en la zona del usuario. Nada de aqui lee la zona del proceso.
 
-const ZONA = "Europe/Madrid";
 const HORA = 3600000;
 // Festivos nacionales fijos de la 2.0TD (Circular 3/2020, art. 7), igual que js/datos.js.
 const FIJOS = ["01-01", "01-06", "05-01", "08-15", "10-12", "11-01", "12-06", "12-08", "12-25"];
 
-const formato = new Intl.DateTimeFormat("en-GB", { timeZone: ZONA, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+// Reglas de la UE: hora de verano (UTC+2) desde el ultimo domingo de marzo a la 01:00 UTC hasta el
+// ultimo domingo de octubre a la 01:00 UTC; el resto del año UTC+1. Se calcula sin Intl porque
+// formatear cada instante cuesta demasiada CPU en el plan gratuito de Workers.
+const transiciones = new Map();
+function ultimoDomingo(anio, mes) {
+  const ultimo = new Date(Date.UTC(anio, mes + 1, 0));
+  return Date.UTC(anio, mes, ultimo.getUTCDate() - ultimo.getUTCDay(), 1);
+}
+function desfaseMadrid(ms) {
+  const anio = new Date(ms).getUTCFullYear();
+  if (!transiciones.has(anio)) transiciones.set(anio, [ultimoDomingo(anio, 2), ultimoDomingo(anio, 9)]);
+  const [verano, invierno] = transiciones.get(anio);
+  return ms >= verano && ms < invierno ? 2 * HORA : HORA;
+}
 
 export function partesMadrid(ms) {
-  const p = Object.fromEntries(formato.formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
-  const hora = Number(p.hour);
-  const minuto = Number(p.minute);
-  return { dia: `${p.year}-${p.month}-${p.day}`, hora, minuto, minutosDia: hora * 60 + minuto };
+  const f = new Date(ms + desfaseMadrid(ms));
+  const dosDigitos = (n) => String(n).padStart(2, "0");
+  const hora = f.getUTCHours();
+  const minuto = f.getUTCMinutes();
+  return { dia: `${f.getUTCFullYear()}-${dosDigitos(f.getUTCMonth() + 1)}-${dosDigitos(f.getUTCDate())}`, hora, minuto, minutosDia: hora * 60 + minuto };
 }
 
 export const diaMadrid = (ms) => partesMadrid(ms).dia;
@@ -25,13 +38,11 @@ export function sumarDias(fecha, n) {
   return new Date(Date.UTC(t[A], t[M] - 1, t[D] + n)).toISOString().slice(0, 10);
 }
 
-/** Medianoche local de `fecha` en epoch ms; las 22:00 UTC previas siempre caen antes del cambio de hora. */
+/** Medianoche local de `fecha` en epoch ms; a las 22:00 UTC previas el desfase ya es el de esa medianoche. */
 function medianoche(fecha) {
   const t = trozos(fecha);
-  const referencia = Date.UTC(t[A], t[M] - 1, t[D]) - 2 * HORA;
-  const local = partesMadrid(referencia);
-  const desfase = Date.UTC(...local.dia.split("-").map((x, i) => (i === 1 ? Number(x) - 1 : Number(x))), local.hora, local.minuto) - referencia;
-  return Date.UTC(t[A], t[M] - 1, t[D]) - desfase;
+  const utc = Date.UTC(t[A], t[M] - 1, t[D]);
+  return utc - desfaseMadrid(utc - 2 * HORA);
 }
 
 export function limitesDia(fecha) {
