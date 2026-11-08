@@ -36,6 +36,8 @@ function diaDePortal(fecha) {
 }
 
 const sesionValida = { "solarman-sesion": { refresh: "r", access: "a", caduca: Date.UTC(2030, 0, 1) } };
+// Ayer y la semana reciente ya archivados: el atrasado sigue su orden desde mayo.
+const conAyerCompleto = { ...sesionValida, [RESUMEN]: { dias: Object.fromEntries(["2026-09-27", "2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02", "2026-10-03"].map((d) => [d, 288])), horas: [] } };
 
 test("diaLocal usa la hora de Madrid", () => {
   assert.equal(diaLocal(Date.UTC(2026, 9, 3, 22, 30)), "2026-10-04");
@@ -62,7 +64,7 @@ test("pendientes coge el primer mes incompleto", () => {
 });
 
 test("archivar guarda la curva del mes y el resumen con dos escrituras", async () => {
-  const kv = kvFalso(sesionValida);
+  const kv = kvFalso(conAyerCompleto);
   const pedidas = [];
   const pedir = async (url) => {
     pedidas.push(url);
@@ -81,7 +83,7 @@ test("archivar guarda la curva del mes y el resumen con dos escrituras", async (
 });
 
 test("un dia sin curva se marca para no repetirlo y no escribe el mes", async () => {
-  const kv = kvFalso(sesionValida);
+  const kv = kvFalso(conAyerCompleto);
   const r = await archivar({ HISTORICO: kv, SOLARMAN_PLANTA: "1" }, { pedir: async () => json({ records: [] }), ahora: Date.UTC(2026, 9, 4, 10), maximo: 1 });
   assert.equal(r.resultado, "archivado");
   assert.equal(kv.escrituras, 1);
@@ -114,4 +116,72 @@ test("meses archivados y lectura de un mes", async () => {
   assert.deepEqual(await mesesArchivados({ HISTORICO: kv }), { "2026-05": 1, "2026-06": 1 });
   assert.deepEqual(await leerMes({ HISTORICO: kv }, "2026-06"), { dias: { "01": [] } });
   assert.equal(await leerMes({ HISTORICO: kv }, "../otra"), null);
+});
+
+// --- Prioridad de ayer, revisitas acotadas y resumenes diarios ---
+import { seleccionar, MAX_INTENTOS } from "../worker/src/archivo.js";
+
+const portal = (cuerpos) => async (url) => {
+  const [, a, m, d] = url.match(/year=(\d+)&month=(\d+)&day=(\d+)/);
+  const clave = `${a}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  return json(cuerpos[clave] ?? diaDePortal(clave));
+};
+
+test("ayer va el primero aunque haya atrasado desde mayo, y no se deja sin turno al atrasado", () => {
+  const lista = seleccionar({ dias: {} }, "2026-10-03", 2);
+  assert.deepEqual(lista, ["2026-10-03", "2026-05-01"]);
+});
+
+test("un ayer vacio o parcial se revisita con intentos acotados", async () => {
+  const kv = kvFalso(sesionValida);
+  const entorno = { HISTORICO: kv, SOLARMAN_PLANTA: "1" };
+  const ahora = Date.UTC(2026, 9, 4, 10);
+  const completos = {};
+  for (let t = Date.UTC(2026, 4, 1); t <= Date.UTC(2026, 9, 2); t += 86400000) completos[new Date(t).toISOString().slice(0, 10)] = 288;
+  await kv.put(RESUMEN, JSON.stringify({ dias: completos, horas: [] }));
+  let llamadas = 0;
+  const pedir = async () => (llamadas++, json({ records: diaDePortal("2026-10-03").records.slice(0, 100) }));
+  for (let i = 0; i < MAX_INTENTOS + 3; i++) await archivar(entorno, { pedir, ahora, maximo: 1 });
+  assert.equal(llamadas, MAX_INTENTOS);
+  assert.equal(kv.leer(RESUMEN).dias["2026-10-03"], 100);
+});
+
+test("el dia parcial mejora cuando llegan mas datos y deja de revisitarse al completarse", async () => {
+  const kv = kvFalso(sesionValida);
+  const entorno = { HISTORICO: kv, SOLARMAN_PLANTA: "1" };
+  const completos = {};
+  for (let t = Date.UTC(2026, 4, 1); t <= Date.UTC(2026, 9, 2); t += 86400000) completos[new Date(t).toISOString().slice(0, 10)] = 288;
+  await kv.put(RESUMEN, JSON.stringify({ dias: { ...completos, "2026-10-03": 100 }, horas: [] }));
+  const ahora = Date.UTC(2026, 9, 4, 10);
+  await archivar(entorno, { pedir: portal({}), ahora, maximo: 1 });
+  assert.equal(kv.leer(RESUMEN).dias["2026-10-03"], 288);
+  await archivar(entorno, { pedir: async () => assert.fail("completo: no se pide"), ahora, maximo: 1 });
+});
+
+test("una revisita con menos puntos no borra lo ya archivado", async () => {
+  const kv = kvFalso(sesionValida);
+  const entorno = { HISTORICO: kv, SOLARMAN_PLANTA: "1" };
+  const completos = {};
+  for (let t = Date.UTC(2026, 4, 1); t <= Date.UTC(2026, 9, 2); t += 86400000) completos[new Date(t).toISOString().slice(0, 10)] = 288;
+  const ahora = Date.UTC(2026, 9, 4, 10);
+  await kv.put(RESUMEN, JSON.stringify({ dias: { ...completos, "2026-10-03": 200 }, horas: [] }));
+  await kv.put(claveMes("2026-10"), JSON.stringify({ columnas: COLUMNAS_PRUEBA, dias: { "03": compactar(diaDePortal("2026-10-03").records).slice(0, 200) } }));
+  await archivar(entorno, { pedir: async () => json({ records: diaDePortal("2026-10-03").records.slice(0, 50) }), ahora, maximo: 1 });
+  assert.equal(kv.leer(claveMes("2026-10")).dias["03"].length, 200);
+  assert.equal(kv.leer(RESUMEN).dias["2026-10-03"], 200);
+});
+
+import { COLUMNAS as COLUMNAS_PRUEBA } from "../worker/src/archivo.js";
+
+test("un SOC de 0 por ciento no se descarta en las horas", () => {
+  const horas = aHoras([[1000, 0, 100, 0, 0, 0, 0, 0], [1300, 0, 100, 0, 0, 0, 0, 0]]);
+  assert.equal(horas[0][3], 0);
+});
+
+test("al archivar se guarda el resumen diario para comparar sin reintegrar", async () => {
+  const kv = kvFalso(sesionValida);
+  await archivar({ HISTORICO: kv, SOLARMAN_PLANTA: "1" }, { pedir: portal({}), ahora: Date.UTC(2026, 9, 4, 10), maximo: 1 });
+  const d = kv.leer(RESUMEN).diarios["2026-10-03"];
+  assert.equal(d.casa, 9.6);
+  assert.equal(d.cob.casa, 1);
 });
