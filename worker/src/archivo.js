@@ -3,12 +3,14 @@
 // hay y la energia por horas para los habitos). Se recupera lo atrasado poco a
 // poco: el plan gratuito da 10 ms de CPU por ejecucion.
 
-import { integrarDia, resumirDia } from "./informe-calculo.js";
+import { integrarDia, resumirDia, diaCompleto, firmaDia } from "./informe-calculo.js";
+import { diaMadrid, sumarDias } from "./horario.js";
 
 const BASE = "https://globalhome.solarmanpv.com";
-const DIA = 86400000;
 const HORA = 3600000;
 export const RESUMEN = "solarman-curvas";
+// Ayer ya integrado (pequeno): el informe lo lee en vez de reprocesar la curva del mes.
+export const AYER_INTEGRADO = "solarman-dia";
 export const claveMes = (mes) => `solarman-curva-${mes}`;
 // Antes de mayo de 2026 el portal no tiene curva (el datalogger se instalo hacia entonces).
 export const INICIO = "2026-05-01";
@@ -16,15 +18,13 @@ export const COLUMNAS = ["t", "solar", "casa", "compra", "venta", "carga", "desc
 const MAX_HORAS = 400 * 24;
 // Un intervalo largo no se cuenta entero: el portal a veces se salta lecturas.
 const PASO_MAXIMO = 7.5 * 60;
-// Un dia con menos puntos que esto se considera incompleto (un dia de 23 h tiene 276).
-const PUNTOS_COMPLETO = 270;
 // Dias recientes que se pueden revisitar y veces que se reintenta uno que no se completa.
 const DIAS_RECIENTES = 7;
 export const MAX_INTENTOS = 8;
 const DIAS_RESUMEN = 70;
+const SENALES = ["solar", "casa", "compra", "venta", "carga", "descarga"];
 
-const formato = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid", year: "numeric", month: "2-digit", day: "2-digit" });
-export const diaLocal = (t) => formato.format(new Date(t));
+export const diaLocal = (t) => diaMadrid(t);
 
 function diasEntre(desde, hasta) {
   const [a, m, d] = desde.split("-").map(Number);
@@ -52,14 +52,16 @@ export function aHoras(puntos) {
     const siguiente = puntos[i + 1]?.[0] ?? p[0] + 300;
     const segundos = Math.min(siguiente - p[0], PASO_MAXIMO);
     const clave = Math.floor((p[0] * 1000) / HORA);
-    if (!horas.has(clave)) horas.set(clave, [clave, 0, 0, null, 0]);
+    if (!horas.has(clave)) horas.set(clave, [clave, 0, 0, null, 0, 0]);
     const h = horas.get(clave);
     h[1] += ((p[2] ?? 0) * segundos) / 3600;
     h[2] += ((p[1] ?? 0) * segundos) / 3600;
     if (p[7] !== null && p[7] >= 0) h[3] = p[7];
     h[4] += segundos / 60;
+    // Minutos con solar realmente medido: un cero real cuenta, un dato ausente no.
+    if (typeof p[1] === "number" && Number.isFinite(p[1])) h[5] += segundos / 60;
   });
-  return [...horas.values()].map(([c, casa, solar, soc, min]) => [c, Math.round(casa), Math.round(solar), soc, Math.round(min)]);
+  return [...horas.values()].map(([c, casa, solar, soc, min, minSolar]) => [c, Math.round(casa), Math.round(solar), soc, Math.round(min), Math.round(minSolar)]);
 }
 
 /** Dias pendientes del primer mes incompleto, como mucho `maximo`. */
@@ -70,7 +72,11 @@ export function pendientes(resumen, ayer, maximo) {
   return faltan.filter((d) => d.startsWith(mes)).slice(0, maximo);
 }
 
-const restarDias = (dia, n) => new Date(Date.parse(`${dia}T00:00:00Z`) - n * DIA).toISOString().slice(0, 10);
+const restarDias = (dia, n) => sumarDias(dia, -n);
+
+/** Un dia esta completo por la cobertura de sus senales, no por el numero de filas. */
+const incompleto = (resumen, dia) => !diaCompleto(resumen?.diarios?.[dia]);
+const calidad = (d) => SENALES.reduce((s, k) => s + (d?.cob?.[k] ?? 0), 0);
 
 /**
  * Dias a pedir: primero ayer y los recientes incompletos (con intentos acotados) y despues el
@@ -83,7 +89,7 @@ export function seleccionar(resumen, ayer, maximo) {
   for (let i = 0; i < DIAS_RECIENTES; i++) {
     const dia = restarDias(ayer, i);
     if (dia < INICIO) break;
-    if (!(dia in dias) || dias[dia] < PUNTOS_COMPLETO) if ((intentos[dia] || 0) < MAX_INTENTOS) recientes.push(dia);
+    if (!(dia in dias) || incompleto(resumen, dia)) if ((intentos[dia] || 0) < MAX_INTENTOS) recientes.push(dia);
   }
   const atrasado = pendientes(resumen, ayer, maximo).filter((d) => !recientes.includes(d));
   const cupo = Math.ceil(maximo / 2);
@@ -98,13 +104,14 @@ export async function archivar(entorno, { ahora = Date.now(), pedir = fetch, max
   if (!sesion?.access || sesion.caduca <= ahora || !entorno.SOLARMAN_PLANTA) return { resultado: "sin sesion" };
 
   const resumen = (await kv.get(RESUMEN, "json")) || { dias: {}, horas: [] };
-  const ayer = diaLocal(ahora - DIA);
+  const ayer = sumarDias(diaMadrid(ahora), -1);
   const lista = seleccionar(resumen, ayer, maximo);
   if (!lista.length) return { resultado: "al dia" };
 
   const archivos = new Map();
   const sucios = new Set();
   const nuevas = [];
+  let instantanea = null;
   resumen.intentos = resumen.intentos || {};
   resumen.diarios = resumen.diarios || {};
   for (const dia of lista) {
@@ -120,7 +127,12 @@ export async function archivar(entorno, { ahora = Date.now(), pedir = fetch, max
     }
     const puntos = compactar((await respuesta.json())?.records);
     const previo = resumen.dias[dia] ?? -1;
-    if (puntos.length >= previo) {
+    const integrado = puntos.length ? integrarDia(puntos, dia) : null;
+    const resumido = integrado && resumirDia(integrado);
+    const guardado = resumen.diarios[dia];
+    // Mejora por cobertura medida; sin resumen previo (datos antiguos) se compara por filas.
+    const mejora = guardado ? !!resumido && calidad(resumido) >= calidad(guardado) : puntos.length >= previo;
+    if (mejora) {
       resumen.dias[dia] = puntos.length;
       if (puntos.length) {
         const mes = dia.slice(0, 7);
@@ -128,13 +140,15 @@ export async function archivar(entorno, { ahora = Date.now(), pedir = fetch, max
         archivos.get(mes).dias[dia.slice(8)] = puntos;
         sucios.add(mes);
         nuevas.push(...aHoras(puntos));
-        resumen.diarios[dia] = resumirDia(integrarDia(puntos, dia));
+        resumen.diarios[dia] = resumido;
+        if (dia === ayer) instantanea = { integrado, firma: firmaDia(resumido.cob) };
       }
     }
-    if (puntos.length >= PUNTOS_COMPLETO) delete resumen.intentos[dia];
+    if (diaCompleto(resumen.diarios[dia])) delete resumen.intentos[dia];
     else if (reciente) resumen.intentos[dia] = (resumen.intentos[dia] || 0) + 1;
   }
   for (const mes of sucios) await kv.put(claveMes(mes), JSON.stringify(archivos.get(mes)));
+  if (instantanea) await kv.put(AYER_INTEGRADO, JSON.stringify({ dia: ayer, firma: instantanea.firma, integrado: instantanea.integrado }));
   const horas = new Map((resumen.horas || []).map((h) => [h[0], h]));
   for (const h of nuevas) horas.set(h[0], h);
   resumen.horas = [...horas.values()].sort((x, y) => x[0] - y[0]).slice(-MAX_HORAS);

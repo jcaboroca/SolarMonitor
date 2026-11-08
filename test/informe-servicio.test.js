@@ -504,7 +504,7 @@ function horasCalibradas(dias = 8) {
   const horas = [];
   for (let d = 1; d <= dias; d++) {
     const { inicio } = limitesDia(`2026-10-${String(d + 10).padStart(2, "0")}`);
-    for (let h = 0; h < 24; h++) horas.push([Math.floor((inicio + h * 3600000) / 3600000), 400, h >= 10 && h < 16 ? 800 : 0, 50, 60]);
+    for (let h = 0; h < 24; h++) horas.push([Math.floor((inicio + h * 3600000) / 3600000), 400, h >= 10 && h < 16 ? 800 : 0, 50, 60, h >= 10 && h < 16 ? 60 : 0]);
   }
   return horas;
 }

@@ -1,13 +1,15 @@
 // Informe diario: generacion a las 08:30 de Madrid, persistencia, envio de push y API.
 // Todo en KV (el mismo HISTORICO). Nada de aqui toca el paquete cifrado del historico.
 
-import { claveMes, RESUMEN } from "./archivo.js";
-import { integrarDia, resumirDia, construirInforme, evaluarTarifa } from "./informe-calculo.js";
+import { claveMes, RESUMEN, AYER_INTEGRADO } from "./archivo.js";
+import { integrarDia, construirInforme, evaluarTarifa } from "./informe-calculo.js";
 import { construirHoy } from "./informe-hoy.js";
 import { diaMadrid, partesMadrid, sumarDias } from "./horario.js";
 import { configVapid, enviarPush, idSuscripcion, validarEndpoint, validarSuscripcion } from "./push.js";
 
 export const MAX_GENERACIONES = 4;
+// Regeneraciones extra, solo si el archivo de SolarMAN mejora de verdad despues de generar.
+export const MAX_REGENERACIONES = 4;
 export const MAX_ENTREGAS = 3;
 const HORA_INFORME = 8 * 60 + 30;
 const MAX_INFORMES = 60;
@@ -60,17 +62,16 @@ export function validarConfig(cuerpo) {
 
 // ---------------------------------------------------------------- Generacion
 
-async function leerDiarios(kv, resumen, fecha) {
+/**
+ * Datos de ayer: el archivo guarda ya integrado el ultimo dia (una lectura pequena); solo si falta
+ * (datos antiguos) se integra la curva del mes. Los totales de otros dias salen de `diarios`.
+ */
+async function leerFuente(kv, resumen, fecha) {
   const diarios = { ...(resumen?.diarios || {}) };
-  const mes = fecha.slice(0, 7);
-  const curva = await kv.get(claveMes(mes), "json");
-  const puntosDe = (dia) => curva?.dias?.[dia.slice(8)];
-  // El mes en curso se completa en memoria si el archivo aun no ha resumido esos dias.
-  for (let d = sumarDias(fecha, -1); d.startsWith(mes); d = sumarDias(d, -1)) {
-    if (diarios[d] || !puntosDe(d)) continue;
-    diarios[d] = resumirDia(integrarDia(puntosDe(d), d));
-  }
-  return { diarios, puntos: puntosDe(fecha) || [] };
+  const instantanea = await kv.get(AYER_INTEGRADO, "json");
+  if (instantanea?.dia === fecha && instantanea.integrado) return { diarios, integrado: instantanea.integrado };
+  const curva = await kv.get(claveMes(fecha.slice(0, 7)), "json");
+  return { diarios, integrado: integrarDia(curva?.dias?.[fecha.slice(8)] || [], fecha) };
 }
 
 function informeDeError(fecha, ahora) {
@@ -104,15 +105,17 @@ export async function generarInforme(entorno, { ahora = Date.now(), pedir = (u, 
   try {
     const cfg = { ...CONFIG_BASE, ...(config || {}) };
     const resumen = await kv.get(RESUMEN, "json");
-    const { diarios, puntos } = await leerDiarios(kv, resumen, fecha);
-    informe = construirInforme({ puntos, fecha, ahora, config: cfg, diarios });
+    const { diarios, integrado } = await leerFuente(kv, resumen, fecha);
+    informe = construirInforme({ integrado, fecha, ahora, config: cfg, diarios });
     if (informe.estado !== "sin_datos") informe.hoy = await construirHoy({ config: cfg, informe, resumen, ahora, pedir });
     else informe.hoy = { fecha: diaMadrid(ahora), estado: "no_disponible", texto: "Sin datos de ayer no se prepara la recomendación de hoy.", recomendaciones: [] };
   } catch {
     informe = informeDeError(fecha, ahora);
   }
   const final = informe.estado === "ok" || informe.estado === "parcial";
-  const entrada = { fecha, estado: informe.estado, generado: informe.generado, intentos, push: { estado: final ? "pendiente" : "no_aplica", pendientes: final ? 1 : 0 } };
+  // Regenerar no borra la entrega: el estado de envio de esa fecha se conserva para no duplicar avisos.
+  const push = final ? (previa?.push && previa.push.estado !== "no_aplica" ? previa.push : { estado: "pendiente", pendientes: 1 }) : { estado: "no_aplica", pendientes: 0 };
+  const entrada = { fecha, estado: informe.estado, generado: informe.generado, intentos, firma: informe.firma ?? null, push };
   await kv.put(claveInforme(fecha), JSON.stringify(informe));
   await guardarIndice(kv, indice, entrada);
   return { informe, entrada };
@@ -165,8 +168,15 @@ export async function programado(entorno, { ahora = Date.now(), pedir = (u, i) =
   const indice = await kv.get("informe-indice", "json");
   const previa = indice?.informes?.find((e) => e.fecha === fecha);
   const final = previa && (previa.estado === "ok" || previa.estado === "parcial");
-  if (final && !previa.push?.pendientes) return { resultado: "completo" };
-  if (previa && !final && previa.intentos >= MAX_GENERACIONES) return { resultado: "agotado" };
+  // El archivo guarda ayer con su firma de cobertura: si cambia tras generar, hay datos nuevos.
+  let mejora = false;
+  if (previa && previa.estado !== "ok") {
+    const instantanea = await kv.get(AYER_INTEGRADO, "json");
+    mejora = instantanea?.dia === fecha && !!instantanea.firma && instantanea.firma !== previa.firma;
+  }
+  const regenerar = mejora && previa.intentos < MAX_GENERACIONES + MAX_REGENERACIONES;
+  if (final && !previa.push?.pendientes && !regenerar) return { resultado: "completo" };
+  if (previa && !final && previa.intentos >= MAX_GENERACIONES && !regenerar) return { resultado: "agotado" };
 
   const bloqueo = await kv.get("informe-lock", "json");
   if (bloqueo?.hasta > ahora) return { resultado: "ocupado" };
@@ -175,7 +185,7 @@ export async function programado(entorno, { ahora = Date.now(), pedir = (u, i) =
     let entrada = previa;
     let resultado = "reintento";
     let estado = previa?.estado;
-    if (!final) {
+    if (!final || regenerar) {
       ({ entrada } = await generarInforme(entorno, { ahora, pedir }));
       resultado = entrada.estado === "error" ? "error" : "generado";
       estado = entrada.estado;

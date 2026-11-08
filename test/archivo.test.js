@@ -36,8 +36,10 @@ function diaDePortal(fecha) {
 }
 
 const sesionValida = { "solarman-sesion": { refresh: "r", access: "a", caduca: Date.UTC(2030, 0, 1) } };
-// Ayer y la semana reciente ya archivados: el atrasado sigue su orden desde mayo.
-const conAyerCompleto = { ...sesionValida, [RESUMEN]: { dias: Object.fromEntries(["2026-09-27", "2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02", "2026-10-03"].map((d) => [d, 288])), horas: [] } };
+const diariosCompletos = (dias) => Object.fromEntries(Object.keys(dias).map((d) => [d, { solar: 1, casa: 1, compra: 1, venta: 0, carga: 0, descarga: 0, cob: { solar: 1, casa: 1, compra: 1, venta: 1, carga: 1, descarga: 1 } }]));
+// Ayer y la semana reciente ya archivados con su cobertura medida: el atrasado sigue su orden desde mayo.
+const diasPrevios = Object.fromEntries(["2026-09-27", "2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02", "2026-10-03"].map((d) => [d, 288]));
+const conAyerCompleto = { ...sesionValida, [RESUMEN]: { dias: diasPrevios, diarios: diariosCompletos(diasPrevios), horas: [] } };
 
 test("diaLocal usa la hora de Madrid", () => {
   assert.equal(diaLocal(Date.UTC(2026, 9, 3, 22, 30)), "2026-10-04");
@@ -52,7 +54,7 @@ test("compactar se queda con las columnas utiles y ordena", () => {
 test("aHoras integra cada hora del dia", () => {
   const horas = aHoras(compactar(diaDePortal("2026-08-10").records));
   assert.equal(horas.length, 24);
-  assert.deepEqual(horas[12].slice(1), [400, 1200, 50, 60]);
+  assert.deepEqual(horas[12].slice(1), [400, 1200, 50, 60, 60]); // el ultimo es el tiempo con solar medido
   assert.equal(horas[3][2], 0);
 });
 
@@ -99,7 +101,7 @@ test("si Solarman falla no marca el dia", async () => {
 test("al dia no pide nada ni escribe", async () => {
   const dias = {};
   for (let t = Date.UTC(2026, 4, 1); t <= Date.UTC(2026, 9, 3); t += 86400000) dias[new Date(t).toISOString().slice(0, 10)] = 288;
-  const kv = kvFalso({ ...sesionValida, [RESUMEN]: { dias, horas: [] } });
+  const kv = kvFalso({ ...sesionValida, [RESUMEN]: { dias, diarios: diariosCompletos(dias), horas: [] } });
   const r = await archivar({ HISTORICO: kv, SOLARMAN_PLANTA: "1" }, { pedir: async () => assert.fail("no debe pedir"), ahora: Date.UTC(2026, 9, 4, 10) });
   assert.equal(r.resultado, "al dia");
   assert.equal(kv.escrituras, 0);
@@ -138,7 +140,7 @@ test("un ayer vacio o parcial se revisita con intentos acotados", async () => {
   const ahora = Date.UTC(2026, 9, 4, 10);
   const completos = {};
   for (let t = Date.UTC(2026, 4, 1); t <= Date.UTC(2026, 9, 2); t += 86400000) completos[new Date(t).toISOString().slice(0, 10)] = 288;
-  await kv.put(RESUMEN, JSON.stringify({ dias: completos, horas: [] }));
+  await kv.put(RESUMEN, JSON.stringify({ dias: completos, diarios: diariosCompletos(completos), horas: [] }));
   let llamadas = 0;
   const pedir = async () => (llamadas++, json({ records: diaDePortal("2026-10-03").records.slice(0, 100) }));
   for (let i = 0; i < MAX_INTENTOS + 3; i++) await archivar(entorno, { pedir, ahora, maximo: 1 });
@@ -151,7 +153,7 @@ test("el dia parcial mejora cuando llegan mas datos y deja de revisitarse al com
   const entorno = { HISTORICO: kv, SOLARMAN_PLANTA: "1" };
   const completos = {};
   for (let t = Date.UTC(2026, 4, 1); t <= Date.UTC(2026, 9, 2); t += 86400000) completos[new Date(t).toISOString().slice(0, 10)] = 288;
-  await kv.put(RESUMEN, JSON.stringify({ dias: { ...completos, "2026-10-03": 100 }, horas: [] }));
+  await kv.put(RESUMEN, JSON.stringify({ dias: { ...completos, "2026-10-03": 100 }, diarios: diariosCompletos(completos), horas: [] }));
   const ahora = Date.UTC(2026, 9, 4, 10);
   await archivar(entorno, { pedir: portal({}), ahora, maximo: 1 });
   assert.equal(kv.leer(RESUMEN).dias["2026-10-03"], 288);
@@ -164,7 +166,7 @@ test("una revisita con menos puntos no borra lo ya archivado", async () => {
   const completos = {};
   for (let t = Date.UTC(2026, 4, 1); t <= Date.UTC(2026, 9, 2); t += 86400000) completos[new Date(t).toISOString().slice(0, 10)] = 288;
   const ahora = Date.UTC(2026, 9, 4, 10);
-  await kv.put(RESUMEN, JSON.stringify({ dias: { ...completos, "2026-10-03": 200 }, horas: [] }));
+  await kv.put(RESUMEN, JSON.stringify({ dias: { ...completos, "2026-10-03": 200 }, diarios: diariosCompletos(completos), horas: [] }));
   await kv.put(claveMes("2026-10"), JSON.stringify({ columnas: COLUMNAS_PRUEBA, dias: { "03": compactar(diaDePortal("2026-10-03").records).slice(0, 200) } }));
   await archivar(entorno, { pedir: async () => json({ records: diaDePortal("2026-10-03").records.slice(0, 50) }), ahora, maximo: 1 });
   assert.equal(kv.leer(claveMes("2026-10")).dias["03"].length, 200);

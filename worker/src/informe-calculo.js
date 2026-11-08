@@ -11,8 +11,12 @@ const SALTO_SOC = 20;
 const SALTO_MAX_SEGUNDOS = 900;
 const IMPUESTO_ELECTRICO = 0.0511269632;
 const IVA = 0.21;
-const COBERTURA_BUENA = 0.9;
+// Hasta COBERTURA_COMPLETA un dia no se llama completo (tolera unos pocos muestreos perdidos);
+// COBERTURA_MINIMA basta para mostrar lo observado como minimo; el coste necesita COBERTURA_COSTE.
+const COBERTURA_COMPLETA = 0.98;
 const COBERTURA_MINIMA = 0.5;
+const COBERTURA_COSTE = 0.75;
+const SOC_BORDE = 1800; // una lectura a menos de 30 min del limite del dia vale como inicio o final
 
 const redondear = (x, d = 4) => Math.round(x * 10 ** d) / 10 ** d;
 const valido = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0;
@@ -78,7 +82,24 @@ export function integrarDia(puntos, fecha) {
   });
 
   const socs = ordenados.filter((p) => p[0] >= ini && typeof p[7] === "number" && Number.isFinite(p[7]) && p[7] >= 0 && p[7] <= 100);
-  const soc = socs.length ? { min: Math.min(...socs.map((p) => p[7])), max: Math.max(...socs.map((p) => p[7])), inicio: socs[0][7], fin: socs.at(-1)[7], muestras: socs.length } : null;
+  const socPorHora = new Map();
+  for (const p of socs) socPorHora.set(Math.floor((p[0] - ini) / 3600), p[7]);
+  const soc = socs.length
+    ? {
+        min: Math.min(...socs.map((p) => p[7])),
+        max: Math.max(...socs.map((p) => p[7])),
+        inicio: socs[0][7],
+        fin: socs.at(-1)[7],
+        muestras: socs.length,
+        primera: new Date(socs[0][0] * 1000).toISOString(),
+        ultima: new Date(socs.at(-1)[0] * 1000).toISOString(),
+        primeraHora: hhmm(socs[0][0] * 1000),
+        ultimaHora: hhmm(socs.at(-1)[0] * 1000),
+        inicioCercano: socs[0][0] - ini <= SOC_BORDE,
+        finCercano: final - socs.at(-1)[0] <= SOC_BORDE,
+        cobertura: redondear(socPorHora.size / horas, 2),
+      }
+    : null;
   const saltosSoc = [];
   for (let i = 1; i < socs.length; i++) {
     const de = socs[i - 1][7];
@@ -88,8 +109,6 @@ export function integrarDia(puntos, fecha) {
     }
   }
 
-  const socPorHora = new Map();
-  for (const p of socs) socPorHora.set(Math.floor((p[0] - ini) / 3600), p[7]);
   const socFin = (k) => socPorHora.get(k) ?? null;
   const porHora = horario.map((h, k) => {
     const instante = inicio + k * 3600000;
@@ -114,7 +133,11 @@ export function resumirDia(integrado) {
   return r;
 }
 
-const completo = (d) => ["solar", "casa", "compra"].every((s) => (d?.cob?.[s] ?? 0) >= COBERTURA_BUENA && valido(d?.[s]));
+const completo = (d) => ["solar", "casa", "compra"].every((s) => (d?.cob?.[s] ?? 0) >= COBERTURA_COMPLETA && valido(d?.[s]));
+
+/** Cobertura de las senales necesarias; la firma cambia cuando el archivo mejora de verdad. */
+export const firmaDia = (cob) => ["solar", "casa", "compra", "venta", "carga", "descarga"].map((s) => (cob?.[s] ?? 0).toFixed(2)).join(",");
+export const diaCompleto = completo;
 
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 const precio = (x) => typeof x === "number" && Number.isFinite(x) && x >= 0 && x <= 2;
@@ -151,7 +174,9 @@ export function costeDia(integrado, tarifa, fecha) {
   const t = evaluarTarifa(tarifa, fecha);
   if (!t.valida) return sin(t.motivo);
   if (!t.precios) return sin(t.motivo);
-  if (integrado.cobertura.compra < COBERTURA_BUENA) return sin("No hay datos de compra suficientes ese dia para calcular el coste.");
+  const cob = integrado.cobertura.compra;
+  if (cob < COBERTURA_COSTE) return sin("No hay datos de compra suficientes ese dia para calcular el coste.");
+  const parcial = cob < COBERTURA_COMPLETA;
   let euros = 0;
   const periodos = { P1: { kwh: 0, euros: 0 }, P2: { kwh: 0, euros: 0 }, P3: { kwh: 0, euros: 0 } };
   for (const h of integrado.porHora) {
@@ -166,10 +191,16 @@ export function costeDia(integrado, tarifa, fecha) {
     p.kwh = redondear(p.kwh, 3);
     p.euros = redondear(p.euros, 2);
   }
-  const base = "Solo energia comprada, con impuesto electrico e IVA; no incluye potencia, alquiler de contador ni otros conceptos, asi que no es la factura.";
-  return t.estimado
-    ? { estado: "estimado", euros: redondear(euros, 2), periodos, fuentePrecios: tarifa.fuente, aviso: `Estimacion con medias historicas de una tarifa indexada, no con los precios reales de cada hora. ${base}` }
-    : { estado: "disponible", euros: redondear(euros, 2), periodos, fuentePrecios: tarifa.fuente, aviso: base };
+  const nota = "Solo energia comprada, con impuesto electrico e IVA; no incluye potencia, alquiler de contador ni otros conceptos, asi que no es la factura.";
+  const faltan = parcial ? `Minimo observado: solo hay datos de compra del ${Math.round(cob * 100)} % del dia y no se ha extrapolado el resto. ` : "";
+  const r = t.estimado
+    ? { estado: "estimado", euros: redondear(euros, 2), periodos, fuentePrecios: tarifa.fuente, aviso: `${faltan}Estimacion con medias historicas de una tarifa indexada, no con los precios reales de cada hora. ${nota}` }
+    : { estado: "disponible", euros: redondear(euros, 2), periodos, fuentePrecios: tarifa.fuente, aviso: `${faltan}${nota}` };
+  if (parcial) {
+    r.parcial = true;
+    r.cobertura = cob;
+  }
+  return r;
 }
 
 function ranking(integrado, coste, tarifaPrecios) {
@@ -234,21 +265,21 @@ export function acumuladoMes({ fecha, diarios }) {
 const kwh = (x) => `${redondear(x, 1).toString().replace(".", ",")} kWh`;
 const euros = (x) => x.toFixed(2).replace(".", ",");
 
-export function construirInforme({ puntos, fecha, ahora, config = {}, diarios = {} }) {
-  const integrado = integrarDia(puntos, fecha);
+export function construirInforme({ puntos, fecha, ahora, config = {}, diarios = {}, integrado: previo = null }) {
+  const integrado = previo || integrarDia(puntos, fecha);
   const fuente = { nombre: "SolarMAN (archivo del servidor)", datadis: false, nota: "Datos de SolarMAN guardados en el servidor. No usa Datadis ni facturas: son estimaciones, no el contador oficial.", ultimoDato: integrado.ultimoDato };
-  const base = { version: 1, fecha, tipoDia: tipoDia(fecha), generado: new Date(ahora).toISOString(), fuente, horasEsperadas: integrado.horasEsperadas, cobertura: integrado.cobertura };
+  const base = { version: 1, fecha, tipoDia: tipoDia(fecha), generado: new Date(ahora).toISOString(), fuente, horasEsperadas: integrado.horasEsperadas, cobertura: integrado.cobertura, firma: firmaDia(resumirDia(integrado).cob) };
   const necesarias = ["solar", "casa", "compra"].map((s) => integrado.cobertura[s]);
 
   if (!integrado.muestras || Math.max(...necesarias) < 0.25) {
     return { ...base, estado: "sin_datos", energia: null, soc: null, saltosSoc: [], coste: { estado: "no_disponible", motivo: "No hay datos de ese dia." }, ranking: null, comparacion: null, mes: null, hoy: null, conclusiones: [{ tipo: "aviso", texto: "SolarMAN no tiene datos suficientes de ayer en el servidor, así que no se puede valorar el día. No es que no hayas gastado: simplemente no hay datos." }] };
   }
 
-  const estado = necesarias.every((c) => c >= COBERTURA_BUENA) ? "ok" : "parcial";
+  const estado = necesarias.every((c) => c >= COBERTURA_COMPLETA) ? "ok" : "parcial";
   const energia = {};
   for (const s of SENALES) {
     const c = integrado.cobertura[s];
-    energia[s] = c >= COBERTURA_MINIMA && integrado.energia[s] !== null ? { kwh: redondear(integrado.energia[s], 2), cobertura: c, minimo: c < COBERTURA_BUENA } : null;
+    energia[s] = c >= COBERTURA_MINIMA && integrado.energia[s] !== null ? { kwh: redondear(integrado.energia[s], 2), cobertura: c, minimo: c < COBERTURA_COMPLETA } : null;
   }
   const coste = costeDia(integrado, config.tarifa, fecha);
   const evaluada = evaluarTarifa(config.tarifa, fecha);
@@ -265,18 +296,21 @@ export function construirInforme({ puntos, fecha, ahora, config = {}, diarios = 
   else if (m("casa")) c.push({ tipo: "dato", texto: `La casa consumió ${m("casa")}.` });
   if (m("venta")) c.push({ tipo: "dato", texto: `Vertiste a la red ${m("venta")}.` });
   if (energia.carga && energia.descarga) c.push({ tipo: "dato", texto: `La batería cargó ${kwh(energia.carga.kwh)} y descargó ${kwh(energia.descarga.kwh)} (medido por el inversor).` });
-  if (integrado.soc) c.push({ tipo: "dato", texto: `Nivel de batería indicado: entre ${integrado.soc.min} % y ${integrado.soc.max} % (empezó en ${integrado.soc.inicio} % y acabó en ${integrado.soc.fin} %).` });
+  const s = integrado.soc;
+  if (s?.muestras === 1) c.push({ tipo: "dato", texto: `Hay una sola lectura del nivel de batería indicado: ${s.min} % a las ${s.primeraHora}; no basta para describir el día.` });
+  else if (s?.inicioCercano && s.finCercano) c.push({ tipo: "dato", texto: `Nivel de batería indicado: entre ${s.min} % y ${s.max} % (empezó en ${s.inicio} % y acabó en ${s.fin} %).` });
+  else if (s) c.push({ tipo: "dato", texto: `Nivel de batería indicado: lecturas entre las ${s.primeraHora} (${s.inicio} %) y las ${s.ultimaHora} (${s.fin} %), con valores de ${s.min} % a ${s.max} %; solo hay lectura en el ${Math.round(s.cobertura * 100)} % de las horas del día, así que no se describe el resto.` });
   if (rank?.horas.length) {
     const h = rank.horas[0];
     c.push({ tipo: "patron", texto: `La hora de compra más ${rank.criterio === "euros" ? "cara" : "alta"} fue la de las ${h.hora}:00 (${kwh(h.compraKwh)}${h.euros !== undefined ? `, ≈ ${euros(h.euros)} €` : ""})${h.motivos.length ? `: ${h.motivos.join("; ")}` : ""}.` });
   }
   for (const s of integrado.saltosSoc.slice(0, 3)) c.push({ tipo: "aviso", texto: `A las ${s.hora} el nivel de batería indicado cambió de golpe de ${s.de} % a ${s.a} %. Es un cambio del valor indicado por el inversor; no se interpreta como un diagnóstico de la batería.` });
   if (coste.estado === "no_disponible") c.push({ tipo: "aviso", texto: `Coste en euros no disponible: ${coste.motivo}` });
-  else c.push({ tipo: "dato", texto: `Coste de la energía comprada ${coste.estado === "estimado" ? "(estimación con medias históricas)" : ""}: ≈ ${euros(coste.euros)} €. ${coste.aviso}` });
+  else c.push({ tipo: "dato", texto: `Coste de la energía comprada ${coste.parcial ? "observado (al menos)" : ""}${coste.estado === "estimado" ? " (estimación con medias históricas)" : ""}: ${coste.parcial ? "al menos " : ""}≈ ${euros(coste.euros)} €. ${coste.aviso}`.replace(/\s+:/, ":") });
   if (comparacion) {
     const x = comparacion.metricas.compra;
     c.push({ tipo: "dato", texto: `Frente a la mediana de ${x.n} días ${comparacion.tipoDia === "finde" ? "de fin de semana o festivo" : "laborables"} recientes, compraste ${x.difKwh >= 0 ? "+" : ""}${kwh(x.difKwh)}${x.difPct !== null ? ` (${x.difPct >= 0 ? "+" : ""}${x.difPct} %)` : ""}.` });
-  }
+  } else if (estado === "parcial") c.push({ tipo: "aviso", texto: "Como los datos de ayer están incompletos, no se compara con otros días ni se extrapola el día entero." });
   if (integrado.ultimoDato && new Date(integrado.ultimoDato).getTime() < limitesDia(fecha).fin - 3600000) c.push({ tipo: "aviso", texto: `El último dato recibido es de las ${hhmm(new Date(integrado.ultimoDato).getTime())}; los datos finales del día pueden estar pendientes.` });
 
   return { ...base, estado, energia, soc: integrado.soc, saltosSoc: integrado.saltosSoc, coste, ranking: rank, comparacion, mes, hoy: null, conclusiones: c, resumenDia: resumen };

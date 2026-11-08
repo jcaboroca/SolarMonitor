@@ -203,14 +203,29 @@ Las claves VAPID se rotan con otro `secret put`; los dispositivos deben reactiva
 
 ### Límites medidos (importante)
 
-`node scripts/medir-informe.mjs` (datos sintéticos, 30 días): generar un informe
-cuesta ~70–170 ms de CPU en caliente y ~500 ms en frío en Node; el cron horario
-sin trabajo pendiente, ~0,3 ms. **Eso supera los 10 ms de CPU del plan gratuito
-de Workers**, así que la generación diaria probablemente se corte allí: es un
-bloqueo de despliegue sin resolver. Alternativas seguras: plan Workers de pago
-(30 s de CPU por defecto) o guardar resúmenes diarios precalculados en `archivar`
-y generar solo con ellos. No está medido en Cloudflare real. La comparación con el
-mes anterior no está disponible hasta que el archivo guarde totales diarios.
+Estado de un informe: «Completo» exige ≥98 % de cobertura en cada señal necesaria; por debajo es «Parcial» y el coste, si la cobertura de compra es ≥75 %, se presenta como «al menos» (mínimo observado, sin extrapolar). Un informe parcial se regenera si el archivo mejora después (firma de cobertura distinta), con un máximo acotado de reintentos.
+
+`node scripts/medir-informe.mjs` (datos sintéticos, 30 días, CPU de Node en esta
+máquina, **no** medida de Cloudflare): generar el informe cuesta ~12–24 ms en
+caliente y ~340 ms en frío (carga de módulos); archivar un día nuevo, ~40–50 ms; el
+cron horario sin trabajo pendiente, ~0,3 ms. Desde esta revisión `archivar` guarda
+el día de ayer ya integrado (`solarman-dia`, una clave pequeña) y los totales
+diarios (`diarios`), de modo que generar **no** vuelve a procesar la curva del mes;
+antes costaba ~70–170 ms. Aun así queda por encima de los 10 ms de CPU del plan
+gratuito, así que sigue siendo un riesgo de despliegue sin validar en Cloudflare
+real: alternativas seguras, plan Workers de pago o dividir en invocaciones más
+pequeñas; no se ha cambiado el alojamiento.
+
+Presupuesto de KV por día: `archivar` hace cada hora como mucho 2 escrituras (mes
+y resumen) más 1 de `solarman-dia` cuando recoge ayer, con un máximo de 8 intentos
+por día; el informe, 1 escritura del informe, 1 del índice, 2 del bloqueo y 1 por
+dispositivo notificado. Las regeneraciones por mejora del archivo están acotadas
+(`MAX_REGENERACIONES`, 4 extra) y no reenvían el aviso ya enviado.
+
+Tras desplegar: la calibración de la previsión solo cuenta horas archivadas con el
+formato nuevo (columna de minutos con sol medido), así que necesita ~5 días antes de
+calibrar; la comparación con el mes anterior solo usa días con `diarios`, es decir,
+archivados con esta versión.
 
 ### Prueba manual pendiente
 

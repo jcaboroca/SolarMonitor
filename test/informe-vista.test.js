@@ -168,3 +168,140 @@ test("el modulo no pide permisos ni suscribe al cargarse", () => {
   const fuera = fuente.split("\n").filter((l) => /requestPermission|\.subscribe\(/.test(l));
   assert.equal(fuera.length, 2); // solo dentro de activarPush
 });
+
+// ---------------------------------------------------------------- Revision R1, R6, R7, R8
+
+const base = { fecha: "2026-11-07", generado: "2026-11-08T07:30:00.000Z", horasEsperadas: 24, fuente: { nombre: "SolarMAN (archivo del servidor)", datadis: false }, cobertura: { solar: 1, casa: 1, compra: 1 }, conclusiones: [], coste: { estado: "no_disponible", motivo: "x" }, hoy: null };
+
+test("R1: un informe parcial se rotula parcial y un completo, completo", () => {
+  assert.match(htmlInforme({ ...base, estado: "parcial", cobertura: { solar: 1, casa: 1, compra: 0.9167 } }), /insignia-parcial">Parcial/);
+  assert.doesNotMatch(htmlInforme({ ...base, estado: "parcial" }), />Completo</);
+  assert.match(htmlInforme({ ...base, estado: "ok" }), />Completo</);
+});
+
+test("R1: el coste de un dia parcial se presenta como minimo observado", () => {
+  const h = htmlInforme({ ...base, estado: "parcial", coste: { estado: "disponible", parcial: true, euros: 2.65, aviso: "Mínimo observado" } });
+  assert.match(h, /al menos/i);
+});
+
+test("R8: se muestran el acumulado del mes, los dias completos y la comparacion con el mes anterior", () => {
+  const mes = { mes: "2026-11", diasTranscurridos: 7, diasCompletos: 5, actual: { solar: 40.5, casa: 80.25, compra: 55 }, comparable: { diasIguales: 4, mesActual: { solar: 30, casa: 60, compra: 44 }, mesAnterior: { solar: 50, casa: 70, compra: 20 }, mesAnteriorClave: "2026-10" }, aviso: "Acumulado observado de 5 de 7 días." };
+  const h = htmlInforme({ ...base, estado: "ok", mes });
+  assert.match(h, /Mes en curso/);
+  assert.match(h, /5 de 7 días/);
+  assert.match(h, /40,5 kWh/);
+  assert.match(h, /80,25 kWh|80,3 kWh/);
+  assert.match(h, /mismos 4 días/i);
+  assert.match(h, /2026-10/);
+  assert.match(h, /50 kWh/);
+  assert.match(h, /no es el mes completo/i);
+});
+
+test("R8: sin mes comparable no se inventa comparacion y un mes parcial no se llama equivalente", () => {
+  const mes = { mes: "2026-11", diasTranscurridos: 7, diasCompletos: 0, actual: { solar: 0, casa: 0, compra: 0 }, comparable: null, aviso: "Acumulado observado de 0 de 7 días." };
+  const h = htmlInforme({ ...base, estado: "ok", mes });
+  assert.doesNotMatch(h, /mes anterior/i);
+  assert.match(h, /sin días completos|0 de 7 días/i);
+});
+
+test("R8: la comparacion con dias parecidos lista los dias usados", () => {
+  const comparacion = { tipoDia: "finde", dias: ["2026-10-31", "2026-10-24"], metricas: { solar: { actual: 5, referencia: 4, n: 2, difKwh: 1, difPct: 25 }, casa: { actual: 10, referencia: 9, n: 2, difKwh: 1, difPct: 11 }, compra: { actual: 6, referencia: 5.5, n: 2, difKwh: 0.5, difPct: 9 } } };
+  const h = htmlInforme({ ...base, estado: "ok", comparacion });
+  assert.match(h, /2026-10-31/);
+  assert.match(h, /fin de semana|festivo/);
+  assert.match(h, /mediana/i);
+});
+
+function entornoRotado({ clavePrevia = "AQID", clave = "AQID", fallaBaja = false, fallaAlta = false, fallaRegistro = false, fallaBajaRemota = false } = {}) {
+  const llamadas = [];
+  const viejo = { endpoint: "https://web.push.apple.com/viejo", options: { applicationServerKey: claveABytes(clavePrevia).buffer }, toJSON: () => ({ endpoint: "https://web.push.apple.com/viejo", keys: { p256dh: "p", auth: "a" } }), unsubscribe: async () => (llamadas.push("baja-vieja"), !fallaBaja && true) };
+  const nuevo = { endpoint: "https://web.push.apple.com/nuevo", options: { applicationServerKey: claveABytes(clave).buffer }, toJSON: () => ({ endpoint: "https://web.push.apple.com/nuevo", keys: { p256dh: "p", auth: "a" } }), unsubscribe: async () => (llamadas.push("baja-nueva"), true) };
+  let actual = viejo;
+  return {
+    llamadas,
+    notification: { permission: "granted", requestPermission: async () => "granted" },
+    registro: {
+      pushManager: {
+        getSubscription: async () => actual,
+        subscribe: async () => {
+          llamadas.push("subscribe");
+          if (fallaAlta) throw new Error("fallo del proveedor");
+          actual = nuevo;
+          return nuevo;
+        },
+      },
+    },
+    pedir: async (ruta, { method, body } = {}) => {
+      llamadas.push([method || "GET", ruta, body && JSON.parse(body).endpoint?.slice(-5)]);
+      if (method === "PUT" && fallaRegistro) return new Response(JSON.stringify({ error: "servidor caido" }), { status: 500 });
+      if (method === "DELETE" && fallaBajaRemota) return new Response(JSON.stringify({ error: "no" }), { status: 500 });
+      return new Response("{}", { status: 200 });
+    },
+    clave,
+    ...(fallaBaja ? { baja: true } : {}),
+  };
+}
+
+test("R7: con la misma clave se reutiliza la suscripcion existente", async () => {
+  const e = entornoRotado();
+  const r = await activarPush(e);
+  assert.equal(r.estado, "activo");
+  assert.ok(!e.llamadas.includes("subscribe"));
+  assert.ok(!e.llamadas.includes("baja-vieja"));
+  assert.deepEqual(e.llamadas.find((l) => Array.isArray(l)), ["PUT", "/informe/suscripcion", undefined]);
+});
+
+test("R7: tras rotar la clave VAPID se da de baja la antigua, se crea otra y se reconcilia el servidor", async () => {
+  const e = entornoRotado({ clavePrevia: "AQID", clave: "BAUG" });
+  const r = await activarPush(e);
+  assert.equal(r.estado, "activo");
+  assert.deepEqual(e.llamadas.filter((l) => !Array.isArray(l)), ["baja-vieja", "subscribe"]);
+  const remotas = e.llamadas.filter((l) => Array.isArray(l));
+  assert.deepEqual(remotas, [["PUT", "/informe/suscripcion", undefined], ["DELETE", "/informe/suscripcion", "viejo"]]);
+});
+
+test("R7: si no se puede dar de baja la suscripcion antigua no se anuncia exito ni se registra nada", async () => {
+  const e = entornoRotado({ clavePrevia: "AQID", clave: "BAUG", fallaBaja: true });
+  const r = await activarPush(e);
+  assert.equal(r.estado, "error");
+  assert.doesNotMatch(r.mensaje, /activadas/);
+  assert.deepEqual(e.llamadas.filter((l) => Array.isArray(l)), []);
+  assert.ok(!e.llamadas.includes("subscribe"));
+});
+
+test("R7: si falla crear la nueva suscripcion se informa y se limpia el registro antiguo del servidor", async () => {
+  const e = entornoRotado({ clavePrevia: "AQID", clave: "BAUG", fallaAlta: true });
+  const r = await activarPush(e);
+  assert.equal(r.estado, "error");
+  assert.match(r.mensaje, /fallo del proveedor/);
+  assert.deepEqual(e.llamadas.filter((l) => Array.isArray(l)), [["DELETE", "/informe/suscripcion", "viejo"]]);
+});
+
+test("R7: si el servidor rechaza la nueva suscripcion se deshace y no se anuncia exito", async () => {
+  const e = entornoRotado({ clavePrevia: "AQID", clave: "BAUG", fallaRegistro: true });
+  const r = await activarPush(e);
+  assert.equal(r.estado, "error");
+  assert.match(r.mensaje, /servidor caido/);
+  assert.ok(e.llamadas.includes("baja-nueva"));
+});
+
+test("R7: si el servidor no limpia la suscripcion antigua el exito lo advierte", async () => {
+  const e = entornoRotado({ clavePrevia: "AQID", clave: "BAUG", fallaBajaRemota: true });
+  const r = await activarPush(e);
+  assert.equal(r.estado, "activo");
+  assert.match(r.mensaje, /antigua/);
+});
+
+test("R7: una suscripcion cuya clave no se puede comprobar se recrea", async () => {
+  const e = entornoRotado();
+  const sub = await e.registro.pushManager.getSubscription();
+  delete sub.options;
+  const r = await activarPush(e);
+  assert.equal(r.estado, "activo");
+  assert.ok(e.llamadas.includes("subscribe"));
+});
+
+test("R6: el CSS respeta hidden en los contenedores del informe", () => {
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  assert.match(css, /#panel-informe \[hidden\]\s*\{[^}]*display:\s*none\s*!important/);
+});

@@ -67,6 +67,26 @@ export function configDeFormulario(v) {
 
 // ---------------------------------------------------------------- Pintado
 
+const num = (n) => Number(n ?? 0).toLocaleString("es-ES", { maximumFractionDigits: 2 });
+const trio = (t) => `sol ${num(t?.solar)} kWh · casa ${num(t?.casa)} kWh · compra ${num(t?.compra)} kWh`;
+
+function htmlMes(mes) {
+  if (!mes) return "";
+  const comp = mes.comparable;
+  const completos = mes.diasCompletos > 0 ? `${mes.diasCompletos} de ${mes.diasTranscurridos} días` : `sin días completos (0 de ${mes.diasTranscurridos} días)`;
+  return `<section class="informe-bloque"><h4>Mes en curso</h4>
+  <p>Acumulado observado de ${completos} con cobertura completa: ${trio(mes.actual)}. No es el mes completo ni una factura.</p>
+  ${comp ? `<p>Frente a ${escapar(comp.mesAnteriorClave)}, solo en los mismos ${comp.diasIguales} días completos: ahora ${trio(comp.mesActual)}; antes ${trio(comp.mesAnterior)}.</p>` : ""}
+  ${mes.aviso ? `<p class="ayuda">${escapar(mes.aviso)}</p>` : ""}</section>`;
+}
+
+function htmlComparacion(c) {
+  if (!c?.metricas) return "";
+  const filas = Object.entries(c.metricas).filter(([k]) => SENALES[k]).map(([k, m]) => `<li>${SENALES[k]}: hoy ${num(m.actual)} kWh frente a una mediana de ${num(m.referencia)} kWh (${m.difKwh >= 0 ? "+" : ""}${num(m.difKwh)} kWh${m.difPct === null || m.difPct === undefined ? "" : `, ${m.difPct >= 0 ? "+" : ""}${m.difPct} %`})</li>`).join("");
+  return `<section class="informe-bloque"><h4>Frente a días parecidos</h4>
+  <p class="ayuda">Mediana de días ${c.tipoDia === "finde" ? "de fin de semana o festivo" : "laborables"} con cobertura completa: ${(c.dias || []).map(escapar).join(", ")}.</p><ul>${filas}</ul></section>`;
+}
+
 const lista = (items) => (items.length ? `<ul>${items.map((i) => `<li>${escapar(i)}</li>`).join("")}</ul>` : "");
 
 export function htmlInforme(i) {
@@ -75,7 +95,7 @@ export function htmlInforme(i) {
     .filter(([k]) => SENALES[k])
     .map(([k, c]) => `<li><span>${SENALES[k]}</span> <b>${Math.round((c ?? 0) * 100)} %</b></li>`)
     .join("");
-  const coste = i.coste?.estado === "no_disponible" ? `Coste no disponible: ${i.coste.motivo ?? ""}` : i.coste ? `${i.coste.estado === "estimado" ? "Estimación del coste" : "Coste de la energía comprada"}: ≈ ${(i.coste.euros ?? 0).toLocaleString("es-ES", { minimumFractionDigits: 2 })} € (${i.coste.aviso ?? ""})` : "";
+  const coste = i.coste?.estado === "no_disponible" ? `Coste no disponible: ${i.coste.motivo ?? ""}` : i.coste ? `${i.coste.estado === "estimado" ? "Estimación del coste" : "Coste de la energía comprada"}${i.coste.parcial ? ", al menos" : ""}: ≈ ${(i.coste.euros ?? 0).toLocaleString("es-ES", { minimumFractionDigits: 2 })} € (${i.coste.aviso ?? ""})` : "";
   const hoy = i.hoy;
   return `
 <header class="informe-cabecera">
@@ -86,8 +106,9 @@ export function htmlInforme(i) {
 <section class="informe-bloque"><h4>Lo que pasó ayer</h4>
   ${(i.conclusiones || []).map((c) => `<p class="informe-${escapar(c.tipo)}">${escapar(c.texto)}</p>`).join("")}
   <p>${escapar(coste)}</p>
-  ${i.mes?.aviso ? `<p class="ayuda">${escapar(i.mes.aviso)}</p>` : ""}
 </section>
+${htmlComparacion(i.comparacion)}
+${htmlMes(i.mes)}
 <section class="informe-bloque"><h4>Cobertura de datos</h4><ul class="informe-cobertura">${cobertura}</ul></section>
 <section class="informe-bloque"><h4>Hoy</h4>
   ${hoy ? `<p>${escapar(hoy.texto ?? "")}</p>${lista(hoy.recomendaciones?.slice(1) ?? [])}` : "<p>Sin recomendación para hoy.</p>"}
@@ -115,15 +136,51 @@ export async function activarPush({ notification, registro, pedir, clave }) {
   const permiso = notification.permission === "granted" ? "granted" : await notification.requestPermission();
   if (permiso !== "granted") return { estado: "denegado", mensaje: "No se ha concedido el permiso de notificaciones." };
   const previa = await registro.pushManager.getSubscription();
-  const sub = previa || (await registro.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: claveABytes(clave) }));
-  const r = await pedir("/informe/suscripcion", { method: "PUT", body: JSON.stringify({ suscripcion: sub.toJSON() }) });
-  if (!r.ok) {
-    const mensaje = await mensajeDe(r);
-    if (!previa) await sub.unsubscribe();
-    return { estado: "error", mensaje };
+  const esperada = claveABytes(clave);
+  const actual = previa?.options?.applicationServerKey;
+  const igual = !!actual && mismaClave(new Uint8Array(actual.buffer ?? actual), esperada);
+  if (previa && igual) return registrar(previa, false);
+
+  // Tras rotar la clave VAPID la suscripcion antigua ya no vale: se da de baja y se crea otra.
+  let viejoEndpoint = null;
+  if (previa) {
+    viejoEndpoint = previa.endpoint;
+    let baja = false;
+    try {
+      baja = await previa.unsubscribe();
+    } catch {}
+    if (!baja) return { estado: "error", mensaje: "No se ha podido dar de baja la suscripción anterior de este dispositivo. Inténtalo de nuevo." };
   }
-  return { estado: "activo", mensaje: "Notificaciones activadas en este dispositivo." };
+  let sub;
+  try {
+    sub = await registro.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: esperada });
+  } catch (e) {
+    if (viejoEndpoint) await bajaRemota(viejoEndpoint);
+    return { estado: "error", mensaje: `No se ha podido crear la suscripción: ${e?.message || "error del navegador"}` };
+  }
+  return registrar(sub, true, viejoEndpoint);
+
+  async function registrar(suscripcion, nueva, viejo) {
+    const r = await pedir("/informe/suscripcion", { method: "PUT", body: JSON.stringify({ suscripcion: suscripcion.toJSON() }) });
+    if (!r.ok) {
+      const mensaje = await mensajeDe(r);
+      if (nueva) await suscripcion.unsubscribe().catch(() => {});
+      return { estado: "error", mensaje };
+    }
+    if (viejo && !(await bajaRemota(viejo))) return { estado: "activo", mensaje: "Notificaciones activadas en este dispositivo. La suscripción antigua no se ha podido quitar del servidor; no recibirás avisos duplicados en este dispositivo, pero conviene desactivar y activar de nuevo." };
+    return { estado: "activo", mensaje: "Notificaciones activadas en este dispositivo." };
+  }
+
+  async function bajaRemota(endpoint) {
+    try {
+      return (await pedir("/informe/suscripcion", { method: "DELETE", body: JSON.stringify({ endpoint }) })).ok;
+    } catch {
+      return false;
+    }
+  }
 }
+
+const mismaClave = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
 
 export async function desactivarPush({ registro, pedir }) {
   const sub = await registro.pushManager.getSubscription();

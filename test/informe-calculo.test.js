@@ -44,7 +44,8 @@ test("integra un dia completo sin inventar energia", () => {
   assert.equal(r.energia.casa, 12);
   assert.equal(r.energia.compra, 2.4);
   assert.equal(r.cobertura.solar, 1);
-  assert.deepEqual(r.soc, { min: 40, max: 40, inicio: 40, fin: 40, muestras: 288 });
+  // soc incluye ahora instantes y cobertura para no presentar una lectura aislada como inicio/final.
+  assert.deepEqual(r.soc, { min: 40, max: 40, inicio: 40, fin: 40, muestras: 288, primera: "2026-11-06T23:00:00.000Z", ultima: "2026-11-07T22:55:00.000Z", primeraHora: "00:00", ultimaHora: "23:55", inicioCercano: true, finCercano: true, cobertura: 1 });
 });
 
 test("dia de 23 horas: cobertura completa y energia de 23 h", () => {

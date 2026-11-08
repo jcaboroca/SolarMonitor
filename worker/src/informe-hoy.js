@@ -51,7 +51,8 @@ export async function construirHoy({ config, informe, resumen, ahora, pedir }) {
   let calibracion = null;
   try {
     const pasado = leerOpenMeteo(await leerJson(pedir, urlPrevisionPasada({ lat: u.lat, lon: u.lon, desde: sumarDias(hoy, -DIAS_CALIBRACION), hasta: sumarDias(hoy, -1) })));
-    const reales = (resumen?.horas || []).map((h) => ({ inicio: new Date(h[0] * HORA_MS), solarKwh: h[2] / 1000, cobertura: h[4] / 60 }));
+    // Solo cuentan las horas con solar medido (h[5]); los registros antiguos no lo distinguen de un cero.
+    const reales = (resumen?.horas || []).map((h) => ({ inicio: new Date(h[0] * HORA_MS), solarKwh: h[2] / 1000, cobertura: (h[5] ?? 0) / 60 }));
     // minimoMuestras enorme: solo el factor global, que no depende de la zona horaria del proceso.
     const c = calibrar(reales, pasado, { minimoMuestras: Infinity });
     if (c.kGlobal !== null && (c.confianza === "media" || c.confianza === "alta")) calibracion = c;
