@@ -216,6 +216,26 @@ export async function probarPush({ registro, pedir }) {
   return r.ok ? { estado: "enviada", mensaje: "Prueba enviada. La entrega depende del dispositivo y de la red; puede tardar." } : { estado: "error", mensaje: await mensajeDe(r) };
 }
 
+export async function generarPorFases({ pedir, esperar = (ms) => new Promise((r) => setTimeout(r, ms)), alProgreso = () => {} }) {
+  const solicitud = await pedir("/informe/generar?fases=1", { method: "POST", body: "{}" });
+  if (!solicitud.ok) return { estado: "error", mensaje: `No se ha podido preparar: ${await mensajeDe(solicitud)}` };
+  const aceptada = await solicitud.json();
+  if (["ok", "parcial"].includes(aceptada.estado)) return { estado: "generado", mensaje: "Informe generado." };
+  if (aceptada.estado !== "preparando") return { estado: "error", mensaje: "El servidor no ha podido preparar un informe con datos. Consulta su estado e inténtalo de nuevo más tarde." };
+  for (let i = 0; i < 12; i++) {
+    alProgreso("Preparando el informe por fases… Puedes cerrar la página: el servidor continuará.");
+    await esperar(2000);
+    const r = await pedir("/informe/avanzar", { method: "POST", body: "{}" });
+    if (!r.ok) return { estado: "error", mensaje: `La preparación no ha terminado: ${await mensajeDe(r)}` };
+    const paso = await r.json();
+    if ((paso.fase === "informe" && paso.resultado === "preparado") || paso.fase === "aviso" || paso.resultado === "completo") {
+      return { estado: "generado", mensaje: "Informe preparado. Consulta su cobertura y los avisos sobre datos incompletos." };
+    }
+    if (paso.resultado === "agotado") return { estado: "error", mensaje: "La preparación se ha detenido tras varios fallos. Vuelve a pulsar Generar para reintentar." };
+  }
+  return { estado: "preparando", mensaje: "El servidor sigue preparando el informe. Vuelve a abrir esta pestaña en unos minutos." };
+}
+
 // ---------------------------------------------------------------- Enlace con la pagina
 
 export function iniciarInforme({ $, pedirNube, hayNube, abrirPestana }) {
@@ -328,7 +348,9 @@ export function iniciarInforme({ $, pedirNube, hayNube, abrirPestana }) {
       configCargada = await rc.json();
       rellenar(configCargada.config);
       pintarCapacidad();
-      const { informes } = await ri.json();
+      const { informes, trabajo } = await ri.json();
+      if (trabajo?.estado === "error") decir("informeEstadoAjustes", `${trabajo.error} Pulsa Generar para reintentar.`);
+      else if (trabajo?.estado === "preparando" && trabajo.fase !== "aviso") decir("informeEstadoAjustes", "El servidor está preparando el informe por fases.");
       const pedida = fechaDeHash(location.hash);
       const fecha = pedida || seleccionada || informes[0]?.fecha || null;
       $("informeIndice").innerHTML = htmlIndice(informes, fecha);
@@ -371,13 +393,16 @@ export function iniciarInforme({ $, pedirNube, hayNube, abrirPestana }) {
   });
 
   $("informeGenerar").addEventListener("click", async () => {
-    decir("informeEstadoAjustes", "Generando el informe de ayer…");
+    $("informeGenerar").disabled = true;
+    decir("informeEstadoAjustes", "Preparando el informe de ayer…");
     try {
-      const r = await pedir("/informe/generar", { method: "POST", body: "{}" });
-      decir("informeEstadoAjustes", r.ok ? "Informe generado." : `No se ha podido generar: ${await mensajeDe(r)}`);
-      if (r.ok) await cargar();
+      const r = await generarPorFases({ pedir, alProgreso: (texto) => decir("informeEstadoAjustes", texto) });
+      if (r.estado === "generado") await cargar();
+      decir("informeEstadoAjustes", r.mensaje);
     } catch (error) {
       decir("informeEstadoAjustes", `No se ha podido generar: ${error.message}`);
+    } finally {
+      $("informeGenerar").disabled = false;
     }
   });
 

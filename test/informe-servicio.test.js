@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { createECDH, createDecipheriv, generateKeyPairSync, hkdfSync, randomBytes } from "node:crypto";
 import worker from "../worker/src/index.js";
 import { programado, generarInforme, MAX_GENERACIONES, MAX_ENTREGAS } from "../worker/src/informe.js";
+import { avanzarInforme } from "../worker/src/informe-flujo.js";
 import { limitesDia, sumarDias } from "../worker/src/horario.js";
 import { b64url } from "../worker/src/push.js";
 
@@ -91,6 +92,26 @@ const noMeteo = async () => new Response("{}", { status: 500 });
 
 const subRegistro = (d, id = "d1") => ({ id, ...d.suscripcion, creada: "2026-11-01T00:00:00.000Z", entrega: {} });
 
+test("la fase de aviso procesa un solo dispositivo y no vuelve a generar aunque cambie la fuente", async () => {
+  const dispositivos = [dispositivo("uno"), dispositivo("dos")];
+  const kv = sembrar({ subs: dispositivos.map((d, i) => subRegistro(d, `d${i}`)) });
+  const e = { HISTORICO: kv, ...vapid() };
+  await generarInforme(e, { ahora: AHORA, pedir: noMeteo });
+  const antes = kv.m.get(`informe-${AYER}`);
+  await kv.put("solarman-version", JSON.stringify({ dia: AYER, f: "corregida", a: "otra", m: 0 }));
+  const envios = [];
+  const pedir = async (url) => { envios.push(url); return new Response(null, { status: 201 }); };
+  await programado(e, { ahora: AHORA, pedir, soloAvisos: true });
+  assert.equal(envios.length, 1);
+  assert.equal(kv.leer("informe-indice").informes[0].push.pendientes, 1);
+  await programado(e, { ahora: AHORA + 60000, pedir, soloAvisos: true });
+  assert.equal(envios.length, 2);
+  assert.equal(new Set(envios).size, 2);
+  assert.equal(kv.leer("informe-indice").informes[0].push.pendientes, 0);
+  await programado(e, { ahora: AHORA + 120000, pedir: sinRed, soloAvisos: true });
+  assert.equal(kv.m.get(`informe-${AYER}`), antes);
+});
+
 // ---------------------------------------------------------------- API
 
 const llamar = (entorno, ruta, { method = "GET", body, clave = CLAVE } = {}) =>
@@ -100,7 +121,7 @@ const entornoApi = (kv = kvFalso(), extra = {}) => ({ HISTORICO: kv, SOLAR_ID: C
 
 test("todas las rutas del informe exigen la clave", async () => {
   const e = entornoApi();
-  const rutas = [["GET", "/informe/config"], ["PUT", "/informe/config"], ["PUT", "/informe/suscripcion"], ["DELETE", "/informe/suscripcion"], ["POST", "/informe/prueba"], ["GET", "/informe/indice"], ["GET", `/informe/ver?fecha=${AYER}`], ["POST", "/informe/generar"]];
+  const rutas = [["GET", "/informe/config"], ["PUT", "/informe/config"], ["PUT", "/informe/suscripcion"], ["DELETE", "/informe/suscripcion"], ["POST", "/informe/prueba"], ["GET", "/informe/indice"], ["GET", `/informe/ver?fecha=${AYER}`], ["POST", "/informe/generar"], ["POST", "/informe/avanzar"]];
   for (const [method, ruta] of rutas) {
     for (const clave of [null, "otra"]) {
       const r = await llamar(e, ruta, { method, clave, body: method === "GET" ? undefined : "{}" });
@@ -227,7 +248,8 @@ test("una prueba que el servicio push da por caducada borra la suscripcion", asy
   assert.equal(kv.leer("informe-subs").dispositivos.length, 0);
 });
 
-test("ver y listar informes validan la fecha y devuelven 404 si no existe", async () => {
+test("ver y listar informes validan la fecha; generar acepta preparacion sin anunciar exito prematuro", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: AHORA });
   const kv = sembrar();
   const e = entornoApi(kv);
   conFetch(noMeteo);
@@ -235,7 +257,12 @@ test("ver y listar informes validan la fecha y devuelven 404 si no existe", asyn
   assert.equal((await llamar(e, "/informe/ver")).status, 400);
   assert.equal((await llamar(e, `/informe/ver?fecha=${AYER}`)).status, 404);
   assert.deepEqual((await (await llamar(e, "/informe/indice")).json()).informes, []);
-  assert.equal((await llamar(e, "/informe/generar", { method: "POST", body: "{}" })).status, 200);
+  const solicitud = await llamar(e, "/informe/generar?fases=1", { method: "POST", body: "{}" });
+  assert.equal(solicitud.status, 202);
+  assert.equal((await solicitud.json()).estado, "preparando");
+  assert.equal((await llamar(e, `/informe/ver?fecha=${AYER}`)).status, 404);
+  assert.equal((await (await llamar(e, "/informe/indice")).json()).trabajo.fase, "fuente");
+  for (let i = 0; i < 6; i++) await avanzarInforme(e, { ahora: AHORA + i * 60000, pedir: noMeteo });
   const informe = await (await llamar(e, `/informe/ver?fecha=${AYER}`)).json();
   assert.equal(informe.fecha, AYER);
   assert.equal((await (await llamar(e, "/informe/indice")).json()).informes[0].fecha, AYER);

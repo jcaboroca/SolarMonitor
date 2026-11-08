@@ -181,12 +181,28 @@ npx wrangler deploy
 ```
 
 Sin esas variables el push falla con un error claro (el informe sí se genera).
-Crons (UTC): `2 * * * *` (el de siempre), y `30 6 * * *` y `30 7 * * *`, dos
-candidatos para las 08:30 de Madrid (verano/invierno). Una guarda de hora local
-(≥ 08:30 Madrid) y el estado guardado evitan generar o enviar dos veces; el cron
-horario sirve de reintento acotado (4 generaciones, 3 entregas por dispositivo).
-Los endpoints 404/410 del proveedor eliminan la suscripción; solo se aceptan
-destinos Apple, FCM y Mozilla.
+Un único cron (`* * * * *`) selecciona **una fase por invocación**:
+
+- Minutos 02, 03 y 04 de cada hora: sondeo, descarga de un día y migración local de un día, respectivamente.
+- Desde las 08:25 de Madrid: fuente de ayer, previsión, calibración e informe, en ejecuciones separadas.
+- Desde las 08:30: envío, como máximo a un dispositivo por ejecución; los demás siguen en los minutos posteriores.
+
+La guarda usa Europe/Madrid también en los cambios de hora. El estado de preparación
+se guarda en KV: tres intentos por fase, cuatro generaciones ordinarias y cuatro
+por cambios de datos, y tres entregas por dispositivo. Las suscripciones 404/410 se
+eliminan; solo se aceptan destinos Apple, FCM y Mozilla. El bloqueo KV es de mejor
+esfuerzo, no una garantía de ejecución exactamente una vez.
+
+«Generar ahora» solicita `/informe/generar?fases=1` y recibe `202 preparando`. La web continúa mediante peticiones
+autenticadas a `/informe/avanzar`, una fase por petición, y limita el seguimiento a
+12 pasos separados por dos segundos. Si se cierra la página o se agota ese seguimiento,
+el cron continúa. Nunca se anuncia «generado» solo por haber aceptado la solicitud.
+Los snapshots meteorológicos deben coincidir en fecha y ubicación; un fallo no se
+convierte en una previsión válida. Preparación y progreso están en claves pequeñas,
+separadas del paquete cifrado.
+El endpoint sin `fases=1` conserva temporalmente la generación síncrona para clientes
+que ya estaban abiertos antes de actualizar la web; hay que recargarlos para usar
+el flujo nuevo. El cron siempre usa las fases independientes.
 
 ### iPhone
 
@@ -197,8 +213,9 @@ Monitor. Hay botón de notificación de prueba y de desactivar.
 
 ### Desactivar / recuperar
 
-Desmarca el informe y los avisos en la web (o `DELETE /informe/suscripcion`);
-quitar los crons `30 6/7` de `wrangler.toml` y redesplegar lo para por completo.
+Desmarca el informe y los avisos en la web (o `DELETE /informe/suscripcion` para
+quitar un dispositivo). El sondeo y el archivo siguen funcionando.
+Quitar el cron de `wrangler.toml` y redesplegar detiene también esas tareas.
 Las claves VAPID se rotan con otro `secret put`; los dispositivos deben reactivar.
 
 ### Límites medidos (importante)
@@ -207,7 +224,7 @@ Estado de un informe: «Completo» exige que no falten más de ~30 s medidos en 
 
 Actualización de datos: `archivar` pide ayer cada hora mientras siga siendo ayer (como mucho ~24 peticiones, sin escrituras si nada cambia) y reconcilia la curva por instante y señal: un valor válido nuevo corrige al guardado y un dato ausente o fuera de dominio (potencia negativa, SoC fuera de 0–100; el 0 real vale) conserva el guardado. Las horas del día se rehacen desde esa curva con las mismas reglas de intervalos que el total diario (sin duplicados, recortando al día, un hueco grande cuenta un paso normal, solo suma tiempo medido): la suma horaria coincide con la diaria salvo el redondeo a Wh enteros, y los minutos de la tupla horaria son los realmente medidos de casa y de solar. Publica una marca pequeña (`solarman-version`) con un hash del contenido aceptado de ayer y otro de las dependencias efectivas del informe (solo los días completos del mes, del mes anterior hasta el mismo día y de la comparación; el historial ajeno no cuenta); el cron regenera el informe (completo o parcial, máximo `MAX_REGENERACIONES` extra) cuando esa versión difiere de la del informe, sin reenviar el aviso ya entregado.
 
-Migración de días heredados: los días con curva y sin resumen diario (de hace más de 7 días o de meses previos, hasta 62 días atrás) se resumen desde la curva ya guardada, sin descargar, `LOTE_MIGRACION` (2) por ejecución, los más recientes primero. Ayer heredado se inicializa también desde su curva (instantánea y marca) para entrar en las revisitas horarias. Solo cuentan como pendientes los días que entran en el informe; mientras queden, el informe lo indica en el acumulado del mes y al terminar se regenera una vez. Los informes fechados de los últimos 6 días generados con migración en curso quedan marcados (`huella.p`) y se refrescan de uno en uno (máx. `MAX_REFRESCOS`) para su fecha original, incluso después de medianoche: conservan la recomendación de hoy original con una nota, no reenvían avisos y mantienen el estado de entrega. El refresco de uno anterior integra su curva mensual una vez (CPU sin medir en Cloudflare). Un backfill de días que no estaban archivados (sin curva) no regenera informes ya publicados. Sin curva no se puede medir: el día queda incompleto y se revisita con intentos acotados.
+Migración de días heredados: los días con curva y sin resumen diario (de hace más de 7 días o de meses previos, hasta 62 días atrás) se resumen desde la curva ya guardada, sin descargar, uno por ejecución programada en el minuto 04, los más recientes primero. Ayer heredado se inicializa también desde su curva (instantánea y marca) para entrar en las revisitas horarias. Solo cuentan como pendientes los días que entran en el informe; mientras queden, el informe lo indica en el acumulado del mes y al terminar se regenera una vez. Los informes fechados de los últimos 6 días generados con migración en curso quedan marcados (`huella.p`) y se refrescan de uno en uno (máx. `MAX_REFRESCOS`) para su fecha original, incluso después de medianoche: conservan la recomendación de hoy original con una nota, no reenvían avisos y mantienen el estado de entrega. El refresco de uno anterior integra su curva mensual una vez (CPU sin medir en Cloudflare). Un backfill de días que no estaban archivados (sin curva) no regenera informes ya publicados. Sin curva no se puede medir: el día queda incompleto y se revisita con intentos acotados.
 
 Rotación de la clave VAPID: el cliente guarda el endpoint antiguo antes de darlo de baja y el `PUT /informe/suscripcion` admite `reemplaza` (solo el endpoint propio, validado), de modo que con 5 dispositivos no hace falta plaza extra; si algo falla, la referencia se conserva y «Desactivar»/reintentar la limpian.
 
@@ -217,20 +234,26 @@ devuelva una curva idéntica: los datos originales no cambian, pero se reparan l
 horas calculadas con reglas antiguas. Si las horas ya coinciden, no hay escritura
 adicional; tampoco se reescribe la curva mensual sin cambios.
 
-`node scripts/medir-informe.mjs` (datos sintéticos, 30 días, CPU de Node en esta
-máquina, **no** medida de Cloudflare): generar el informe cuesta ~12–24 ms en
-caliente (9–29 ms en la última medición) y ~350 ms en frío (carga de módulos); archivar un día nuevo, ~40–65 ms; el
-cron horario sin trabajo pendiente, ~0,3 ms. Desde esta revisión `archivar` guarda
-el día de ayer ya integrado (`solarman-dia`, una clave pequeña) y los totales
-diarios (`diarios`), de modo que generar **no** vuelve a procesar la curva del mes;
-antes costaba ~70–170 ms. Aun así queda por encima de los 10 ms de CPU del plan
-gratuito, así que sigue siendo un riesgo de despliegue sin validar en Cloudflare
-real: alternativas seguras, plan Workers de pago o dividir en invocaciones más
-pequeñas; no se ha cambiado el alojamiento.
+`node scripts/medir-informe.mjs` mide cada fase con datos sintéticos de 30 días.
+Es CPU de Node, **no** de Cloudflare. La generación monolítica llegó a consumir
+14–21 ms reales en Cloudflare durante la validación del 8 de noviembre de 2026,
+por encima del objetivo de 10 ms del plan gratuito, aunque no devolvió errores.
+Por eso se divide ahora el trabajo en invocaciones independientes, no en varias
+promesas dentro de la misma invocación. Hay que medir la CPU real de cada fase,
+también en frío: que una petición termine bien no demuestra que tenga margen.
+No se ha contratado un plan de pago.
+
+La fuente preparada contiene el día integrado, los resúmenes y la cobertura
+pendiente. La composición no vuelve a leer curvas ni a consultar meteorología.
+Las fechas ISO se ordenan sin inicializar comparación regional. La calibración
+descarta horas antiguas o sin sol medido antes de crear objetos y, si no queda
+ninguna utilizable, no pide histórico meteorológico.
 
 Presupuesto de KV por día: `archivar` hace cada hora como mucho una escritura por mes tocado, 1 del resumen, 1 de `solarman-dia` y 1 de `solarman-version` solo si su contenido cambia, con un máximo de 8 intentos
-por día; el informe, 1 escritura del informe, 1 del índice, 2 del bloqueo y 1 por
-dispositivo notificado. Las regeneraciones por mejora del archivo están acotadas
+por día. Cada fase añade una escritura de estado, su resultado preparado cuando
+corresponde y la adquisición/liberación del bloqueo. Un minuto sin trabajo no
+escribe. El informe añade su documento e índice; la entrega actualiza el
+dispositivo y el índice. Las regeneraciones por mejora del archivo están acotadas
 (`MAX_REGENERACIONES`, 4 extra) y no reenvían el aviso ya enviado.
 
 Tras desplegar: la calibración de la previsión solo cuenta horas archivadas o

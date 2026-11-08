@@ -3,7 +3,7 @@
 
 import { claveMes, RESUMEN, AYER_INTEGRADO, MARCA_VERSION, pendientesRelevantes } from "./archivo.js";
 import { integrarDia, construirInforme, evaluarTarifa } from "./informe-calculo.js";
-import { construirHoy } from "./informe-hoy.js";
+import { construirHoy, componerHoy } from "./informe-hoy.js";
 import { diaMadrid, partesMadrid, sumarDias } from "./horario.js";
 import { configVapid, enviarPush, idSuscripcion, validarEndpoint, validarSuscripcion } from "./push.js";
 
@@ -78,6 +78,13 @@ async function leerFuente(kv, resumen, fecha) {
   return { diarios, integrado: integrarDia(curva?.dias?.[fecha.slice(8)] || [], fecha) };
 }
 
+export async function prepararFuente(entorno, { ahora = Date.now() } = {}) {
+  const fecha = sumarDias(diaMadrid(ahora), -1);
+  const resumen = await entorno.HISTORICO.get(RESUMEN, "json");
+  const fuente = await leerFuente(entorno.HISTORICO, resumen, fecha);
+  return { ...fuente, fecha, pendientesMigracion: pendientesRelevantes(resumen, fecha).length };
+}
+
 function informeDeError(fecha, ahora) {
   return {
     version: 1,
@@ -99,7 +106,7 @@ async function guardarIndice(kv, indice, entrada) {
 }
 
 /** Genera y guarda el informe de ayer (hora de Madrid) y su entrada del indice. No envia nada. */
-export async function generarInforme(entorno, { ahora = Date.now(), pedir = (u, i) => fetch(u, i) } = {}) {
+export async function generarInforme(entorno, { ahora = Date.now(), pedir = (u, i) => fetch(u, i), preparacion } = {}) {
   const kv = entorno.HISTORICO;
   const fecha = sumarDias(diaMadrid(ahora), -1);
   const [config, indice] = await Promise.all([kv.get("informe-config", "json"), kv.get("informe-indice", "json")]);
@@ -108,12 +115,17 @@ export async function generarInforme(entorno, { ahora = Date.now(), pedir = (u, 
   let informe;
   try {
     const cfg = { ...CONFIG_BASE, ...(config || {}) };
-    const resumen = await kv.get(RESUMEN, "json");
-    const { diarios, integrado } = await leerFuente(kv, resumen, fecha);
-    informe = construirInforme({ integrado, fecha, ahora, config: cfg, diarios, pendientesMigracion: pendientesRelevantes(resumen, fecha).length });
-    if (informe.estado !== "sin_datos") informe.hoy = await construirHoy({ config: cfg, informe, resumen, ahora, pedir });
+    const resumen = preparacion ? null : await kv.get(RESUMEN, "json");
+    const fuente = preparacion?.fuente ?? await leerFuente(kv, resumen, fecha);
+    if (preparacion && fuente.fecha !== fecha) throw new Error("La fuente preparada no corresponde a ayer.");
+    const { diarios, integrado } = fuente;
+    informe = construirInforme({ integrado, fecha, ahora, config: cfg, diarios, pendientesMigracion: preparacion ? fuente.pendientesMigracion : pendientesRelevantes(resumen, fecha).length });
+    if (informe.estado !== "sin_datos") informe.hoy = preparacion
+      ? componerHoy({ config: cfg, informe, prevision: preparacion.prevision, calibracion: preparacion.calibracion, ahora })
+      : await construirHoy({ config: cfg, informe, resumen, ahora, pedir });
     else informe.hoy = { fecha: diaMadrid(ahora), estado: "no_disponible", texto: "Sin datos de ayer no se prepara la recomendación de hoy.", recomendaciones: [] };
   } catch {
+    console.error("No se pudo componer el informe diario.", { fecha });
     informe = informeDeError(fecha, ahora);
   }
   const final = informe.estado === "ok" || informe.estado === "parcial";
@@ -127,7 +139,7 @@ export async function generarInforme(entorno, { ahora = Date.now(), pedir = (u, 
 
 // ---------------------------------------------------------------- Envio
 
-async function enviarPendientes(entorno, kv, config, entrada, { ahora, pedir }) {
+async function enviarPendientes(entorno, kv, config, entrada, { ahora, pedir, maxDispositivos = MAX_DISPOSITIVOS }) {
   const fecha = entrada.fecha;
   if (!config.pushActivo) return { estado: "desactivado", pendientes: 0 };
   if (!configVapid(entorno).ok) return { estado: "sin_vapid", pendientes: 0 };
@@ -139,12 +151,18 @@ async function enviarPendientes(entorno, kv, config, entrada, { ahora, pedir }) 
   const restantes = [];
   let enviados = 0;
   let cambios = false;
+  let procesados = 0;
   for (const d of dispositivos) {
     const previo = d.entrega?.[fecha];
     if (previo?.estado === "enviado" || previo?.estado === "fallido") {
       restantes.push(d);
       continue;
     }
+    if (procesados >= maxDispositivos) {
+      restantes.push(d);
+      continue;
+    }
+    procesados++;
     const r = await enviarPush(d, payload, entorno, { pedir, ahora });
     cambios = true;
     if (r.resultado === "expirada") continue;
@@ -156,19 +174,26 @@ async function enviarPendientes(entorno, kv, config, entrada, { ahora, pedir }) 
   }
   if (cambios) await kv.put("informe-subs", JSON.stringify({ dispositivos: restantes }));
   const estados = restantes.map((d) => d.entrega?.[fecha]?.estado);
-  const pendientes = estados.filter((e) => e === "pendiente").length;
+  const pendientes = estados.filter((e) => e === "pendiente" || e === undefined).length;
   enviados = estados.filter((e) => e === "enviado").length;
   return { estado: pendientes ? "pendiente" : enviados ? "enviado" : "fallido", pendientes, enviados };
 }
 
 const huellaDe = (e) => e?.huella ?? (e?.version && typeof e.version === "object" ? e.version : null);
 
+export async function cambioInforme(kv, previa, fecha) {
+  const marca = await kv.get(MARCA_VERSION, "json");
+  if (marca?.dia !== fecha) return false;
+  const huella = huellaDe(previa);
+  return !huella || (marca.f && huella.f !== marca.f) || (!(marca.m > 0) && (huella.a !== marca.a || !!huella.p));
+}
+
 /**
  * Un informe fechado anterior a ayer generado mientras se migraban dias que entran en sus acumulados queda
  * marcado (`huella.p`). Al terminar la migracion se rehace, de uno en uno, para su fecha original; conserva la
  * recomendacion de hoy original (con una nota) y el estado de entrega, y no envia nada.
  */
-async function refrescarAnterior(kv, indice, { fecha: ayer, ahora }) {
+export async function refrescarAnterior(kv, indice, { fecha: ayer, ahora }) {
   const minimo = sumarDias(ayer, -DIAS_REFRESCO);
   const candidata = (indice?.informes || [])
     .filter((e) => e.fecha < ayer && e.fecha >= minimo && (e.estado === "ok" || e.estado === "parcial") && huellaDe(e)?.p && (e.refrescos || 0) < MAX_REFRESCOS)
@@ -199,7 +224,7 @@ async function refrescarAnterior(kv, indice, { fecha: ayer, ahora }) {
 }
 
 /** Punto de entrada de los crons: respeta las 08:30 de Madrid y repite lo pendiente. */
-export async function programado(entorno, { ahora = Date.now(), pedir = (u, i) => fetch(u, i) } = {}) {
+export async function programado(entorno, { ahora = Date.now(), pedir = (u, i) => fetch(u, i), soloAvisos = false } = {}) {
   const kv = entorno.HISTORICO;
   const config = await kv.get("informe-config", "json");
   if (!config?.activo) return { resultado: "desactivado" };
@@ -209,20 +234,12 @@ export async function programado(entorno, { ahora = Date.now(), pedir = (u, i) =
   const indice = await kv.get("informe-indice", "json");
   const previa = indice?.informes?.find((e) => e.fecha === fecha);
   const final = previa && (previa.estado === "ok" || previa.estado === "parcial");
-  const huella = huellaDe(previa);
   // El archivo publica una version pequena del contenido aceptado de ayer y de los agregados de los
   // dias anteriores. Si no coincide con la del informe (parcial o completo), la fuente cambio.
-  let cambio = false;
-  if (final) {
-    const marca = await kv.get(MARCA_VERSION, "json");
-    if (marca?.dia === fecha) {
-      // Con migracion en curso (de dias que entran en este informe) los agregados aun cambiaran: se espera a que
-      // termine para no gastar regeneraciones. El historial ajeno al informe ni cambia la huella ni cuenta.
-      cambio = !huella || (marca.f && huella.f !== marca.f) || (!(marca.m > 0) && (huella.a !== marca.a || !!huella.p));
-    }
-  }
+  if (soloAvisos && !final) return { resultado: "sin_informe" };
+  const cambio = final && !soloAvisos && await cambioInforme(kv, previa, fecha);
   const regenerar = cambio && previa.intentos < MAX_GENERACIONES + MAX_REGENERACIONES;
-  if (final && !previa.push?.pendientes && !regenerar) return (await refrescarAnterior(kv, indice, { fecha, ahora })) ?? { resultado: "completo" };
+  if (final && !previa.push?.pendientes && !regenerar) return (soloAvisos ? null : await refrescarAnterior(kv, indice, { fecha, ahora })) ?? { resultado: "completo" };
   if (previa && !final && previa.intentos >= MAX_GENERACIONES && !regenerar) return { resultado: "agotado" };
 
   const bloqueo = await kv.get("informe-lock", "json");
@@ -239,7 +256,7 @@ export async function programado(entorno, { ahora = Date.now(), pedir = (u, i) =
     }
     if (estado === "ok" || estado === "parcial") {
       // El informe y su indice ya estan guardados: un fallo de envio no los pierde.
-      const push = await enviarPendientes(entorno, kv, config, entrada, { ahora, pedir });
+      const push = await enviarPendientes(entorno, kv, config, entrada, { ahora, pedir, maxDispositivos: soloAvisos ? 1 : MAX_DISPOSITIVOS });
       const actual = (await kv.get("informe-indice", "json")) || { informes: [entrada] };
       await guardarIndice(kv, actual, { ...entrada, push });
     }
@@ -263,7 +280,7 @@ async function leerCuerpo(peticion, responder) {
   }
 }
 
-export const RUTAS_INFORME = ["/informe/config", "/informe/suscripcion", "/informe/prueba", "/informe/indice", "/informe/ver", "/informe/generar"];
+export const RUTAS_INFORME = ["/informe/config", "/informe/suscripcion", "/informe/prueba", "/informe/indice", "/informe/ver", "/informe/generar", "/informe/avanzar"];
 
 /** Atiende /informe/*; la autenticacion ya la ha hecho index.js. */
 export async function manejarInforme(peticion, entorno, url, responder, { ahora = Date.now() } = {}) {
@@ -342,7 +359,16 @@ export async function manejarInforme(peticion, entorno, url, responder, { ahora 
     return json({ enviado: true });
   }
 
-  if (ruta === "/informe/indice" && m === "GET") return json({ informes: (await kv.get("informe-indice", "json"))?.informes || [] });
+  if (ruta === "/informe/indice" && m === "GET") {
+    const [indice, trabajo] = await Promise.all([kv.get("informe-indice", "json"), kv.get("informe-trabajo", "json")]);
+    return json({
+      informes: indice?.informes || [],
+      trabajo: trabajo ? {
+        fecha: trabajo.fecha, fase: trabajo.fase, error: trabajo.error, actualizado: trabajo.actualizado,
+        estado: trabajo.intentosFase >= 3 ? "error" : trabajo.fase === "completo" ? "completo" : "preparando",
+      } : null,
+    });
+  }
 
   if (ruta === "/informe/ver" && m === "GET") {
     const fecha = url.searchParams.get("fecha") || "";
@@ -352,8 +378,20 @@ export async function manejarInforme(peticion, entorno, url, responder, { ahora 
   }
 
   if (ruta === "/informe/generar" && m === "POST") {
-    const { informe, entrada } = await generarInforme(entorno, { ahora });
-    return json({ fecha: informe.fecha, estado: entrada.estado });
+    // Los clientes ya abiertos conservan su contrato durante el despliegue de la web.
+    if (!url.searchParams.has("fases")) {
+      const { informe, entrada } = await generarInforme(entorno, { ahora });
+      return json({ fecha: informe.fecha, estado: entrada.estado });
+    }
+    if (url.searchParams.get("fases") !== "1") return error("Modo de preparación no válido.", 400);
+    const { solicitarInforme } = await import("./informe-flujo.js");
+    return json(await solicitarInforme(entorno, { ahora }), 202);
+  }
+
+  if (ruta === "/informe/avanzar" && m === "POST") {
+    const { avanzarInforme } = await import("./informe-flujo.js");
+    const resultado = await avanzarInforme(entorno, { ahora });
+    return json(resultado, resultado.resultado === "agotado" ? 503 : 200);
   }
 
   return responder("Metodo no permitido.", 405);

@@ -133,7 +133,7 @@ export function seleccionar(resumen, ayer, maximo) {
   return lista;
 }
 
-export async function archivar(entorno, { ahora = Date.now(), pedir = fetch, maximo = 2 } = {}) {
+export async function archivar(entorno, { ahora = Date.now(), pedir = fetch, maximo = 2, maxMigracion = LOTE_MIGRACION } = {}) {
   const kv = entorno.HISTORICO;
   const sesion = await kv.get("solarman-sesion", "json");
   if (!sesion?.access || sesion.caduca <= ahora || !entorno.SOLARMAN_PLANTA) return { resultado: "sin sesion" };
@@ -144,7 +144,7 @@ export async function archivar(entorno, { ahora = Date.now(), pedir = fetch, max
   resumen.intentos = resumen.intentos || {};
   resumen.diarios = resumen.diarios || {};
   const lista = seleccionar(resumen, ayer, maximo);
-  const migrar = pendientesMigracion(resumen, ayer).filter((d) => !lista.includes(d)).slice(0, LOTE_MIGRACION);
+  const migrar = pendientesMigracion(resumen, ayer).filter((d) => !lista.includes(d)).slice(0, maxMigracion);
 
   const archivos = new Map();
   const sucios = new Set();

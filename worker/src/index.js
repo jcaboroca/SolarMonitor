@@ -5,10 +5,9 @@
 import { sondear, vincular, leerEstado } from "./solarman.js";
 import { archivar, mesesArchivados, leerMes, horasArchivadas } from "./archivo.js";
 
-import { manejarInforme, programado, RUTAS_INFORME } from "./informe.js";
+import { manejarInforme, RUTAS_INFORME } from "./informe.js";
+import { avanzarInforme } from "./informe-flujo.js";
 
-const CRON_INFORME_A = "30 6 * * *";
-const CRON_INFORME_B = "30 7 * * *";
 const ORIGEN_WEB = "https://jcaboroca.github.io";
 // Las curvas de Solarman van a 5 minutos y abultan; KV admite hasta 25 MB.
 const LIMITE = 20 * 1024 * 1024;
@@ -85,13 +84,18 @@ export default {
   },
 
   async scheduled(evento, entorno, contexto) {
-    // Los dos crons de las 06:30 y 07:30 UTC solo preparan el informe (la guarda de hora de Madrid decide cual vale).
-    if (evento?.cron === CRON_INFORME_A || evento?.cron === CRON_INFORME_B) {
-      contexto.waitUntil(programado(entorno).catch(() => {}));
+    if (evento?.cron !== "* * * * *") {
+      console.warn("Cron anterior al flujo por fases: se omite.", { cron: evento?.cron });
       return;
     }
-    // Primero el dato de la hora (puede renovar la sesion) y luego lo atrasado; despues el informe pendiente.
-    const base = sondear(entorno).then(() => archivar(entorno));
-    contexto.waitUntil(base.then(() => programado(entorno), (e) => programado(entorno).then(() => Promise.reject(e))));
+    const ahora = evento.scheduledTime ?? Date.now();
+    const minuto = new Date(ahora).getUTCMinutes();
+    const tarea = minuto === 2 ? sondear(entorno, { ahora })
+      : minuto === 3 ? archivar(entorno, { ahora, maximo: 1, maxMigracion: 0 })
+      : minuto === 4 ? archivar(entorno, { ahora, maximo: 0, maxMigracion: 1 })
+      : avanzarInforme(entorno, { ahora });
+    contexto.waitUntil(tarea.then((r) => {
+      if (r?.fase || r?.resultado === "error") console.log("Fase solar", { fase: r.fase, resultado: r.resultado });
+    }));
   },
 };

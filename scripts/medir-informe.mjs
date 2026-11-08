@@ -1,7 +1,7 @@
 // Mide la CPU de generar el informe diario con datos sinteticos de un mes completo.
 // Es CPU de Node en esta maquina: sirve para comparar y optimizar, no es una medida de Cloudflare.
 // Uso: node scripts/medir-informe.mjs   (no usa red ni datos reales)
-import { generarInforme, programado } from "../worker/src/informe.js";
+import { avanzarInforme } from "../worker/src/informe-flujo.js";
 import { limitesDia, sumarDias } from "../worker/src/horario.js";
 import { archivar, AYER_INTEGRADO } from "../worker/src/archivo.js";
 import { integrarDia, resumirDia, versionIntegrado } from "../worker/src/informe-calculo.js";
@@ -56,18 +56,11 @@ const mide = async (etiqueta, fn) => {
 
 const nuevo = () => kvEnMemoria({ "informe-config": config, "solarman-curvas": resumen, [AYER_INTEGRADO]: instantanea, "solarman-curva-2026-11": { columnas: [], dias } });
 // El KV se prepara fuera de la medicion; el JSON.parse al leer si cuenta, como en el Worker.
-const kvs = Array.from({ length: 7 }, nuevo);
-await mide("generar (primera vez, en frio)", () => generarInforme({ HISTORICO: kvs[0] }, { ahora: AHORA, pedir }));
-const veces = [];
-for (let i = 1; i < 6; i++) {
-  const a = process.cpuUsage();
-  await generarInforme({ HISTORICO: kvs[i] }, { ahora: AHORA, pedir });
-  veces.push(ms(process.cpuUsage(a)));
+const completo = nuevo();
+for (const [i, fase] of ["fuente", "prevision", "calibracion", "informe", "aviso"].entries()) {
+  await mide(`fase ${fase} (ejecucion independiente)`, () => avanzarInforme({ HISTORICO: completo }, { ahora: AHORA + i * 60000, pedir }));
 }
-console.log(`generar (en caliente): ${Math.min(...veces).toFixed(1)}-${Math.max(...veces).toFixed(1)} ms de CPU`);
-const completo = kvs[6];
-await programado({ HISTORICO: completo }, { ahora: AHORA, pedir });
-await mide("cron horario con todo hecho (2 lecturas)", () => programado({ HISTORICO: completo }, { ahora: AHORA + 3600000, pedir }));
+await mide("cron sin trabajo pendiente", () => avanzarInforme({ HISTORICO: completo }, { ahora: AHORA + 3600000, pedir }));
 console.log("Plan gratuito de Workers: 10 ms de CPU por ejecucion (esperas de red no cuentan).");
 
 // archivar: un dia nuevo (ayer) con la curva del mes ya archivada. Una peticion al portal simulada.
