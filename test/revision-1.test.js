@@ -3,8 +3,8 @@ process.env.TZ = "UTC";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { limitesDia, sumarDias } from "../worker/src/horario.js";
-import { integrarDia, resumirDia, construirInforme, costeDia, acumuladoMes } from "../worker/src/informe-calculo.js";
-import { archivar, aHoras, seleccionar, RESUMEN, claveMes, MAX_INTENTOS } from "../worker/src/archivo.js";
+import { integrarDia, resumirDia, construirInforme, costeDia, acumuladoMes, diaCompleto } from "../worker/src/informe-calculo.js";
+import { archivar, aHoras, seleccionar, pendientesMigracion, RESUMEN, claveMes, MAX_INTENTOS } from "../worker/src/archivo.js";
 import { programado, generarInforme, MAX_GENERACIONES, MAX_REGENERACIONES } from "../worker/src/informe.js";
 import { htmlInforme } from "../js/informe.js";
 
@@ -47,9 +47,9 @@ test("R1: dos horas sin datos de 24 (91,67 %) es parcial, no completo, y todo lo
   assert.doesNotMatch(h, />Completo</);
 });
 
-test("R1: un dia sin huecos o con un hueco de un solo muestreo sigue siendo completo", () => {
+test("R1: solo un dia sin huecos es completo; un muestreo perdido (5 min medidos de menos) ya es parcial", () => {
   assert.equal(informe(dia(AYER)).estado, "ok");
-  assert.equal(informe(dia(AYER, { saltar: (t, h) => h === 5.5 })).estado, "ok");
+  assert.equal(informe(dia(AYER, { saltar: (t, h) => h === 5.5 })).estado, "parcial");
   const i = informe(dia(AYER));
   assert.equal(i.energia.compra.minimo, false);
   assert.equal(i.coste.parcial, undefined);
@@ -174,7 +174,8 @@ test("R4: 288 filas con cobertura solar cero no cierran ayer y una correccion po
   assert.equal(llamadas, 1);
   assert.equal(kv.leer(RESUMEN).diarios[AYER].cob.solar, 1);
   assert.equal(kv.leer(RESUMEN).diarios[AYER].solar, 9);
-  assert.equal(seleccionar(kv.leer(RESUMEN), AYER, 2).includes(AYER), false);
+  assert.equal(diaCompleto(kv.leer(RESUMEN).diarios[AYER]), true);
+  assert.equal(kv.leer(RESUMEN).intentos[AYER], undefined);
 });
 
 test("R4: la revisita con la misma cantidad de filas pero menos cobertura no sustituye lo bueno", async () => {
@@ -193,7 +194,7 @@ test("R4: filas duplicadas no cuentan como dia completo", async () => {
   const duplicadas = [...mitad, ...mitad, ...mitad.slice(0, 144)].slice(0, 288);
   assert.equal(duplicadas.length, 288);
   await archivarCon(kv, duplicadas);
-  assert.equal(kv.leer(RESUMEN).dias[AYER], 288);
+  assert.equal(kv.leer(RESUMEN).dias[AYER], 144); // filas unicas por instante
   assert.ok(kv.leer(RESUMEN).diarios[AYER].cob.casa < 0.6);
   assert.ok(seleccionar(kv.leer(RESUMEN), AYER, 2).includes(AYER));
 });
@@ -206,7 +207,8 @@ test("R4: dias de 23 y 25 horas se completan con sus filas reales, sin revisitas
     const ahora = limitesDia(sumarDias(fecha, 1)).inicio + 10 * 3600000;
     await archivar({ HISTORICO: kv, SOLARMAN_PLANTA: "1" }, { pedir: async () => json(registros(puntos)), ahora, maximo: 1 });
     assert.equal(kv.leer(RESUMEN).diarios[fecha].cob.casa, 1, fecha);
-    assert.equal(seleccionar(kv.leer(RESUMEN), fecha, 2).includes(fecha), false, fecha);
+    assert.equal(diaCompleto(kv.leer(RESUMEN).diarios[fecha]), true, fecha);
+    assert.equal(kv.leer(RESUMEN).intentos[fecha], undefined, fecha);
   }
 });
 
@@ -221,9 +223,10 @@ test("R4: los reintentos siguen acotados y ayer no deja sin turno al atrasado", 
   assert.ok(lista.includes("2026-05-01"));
 });
 
-test("R4: un dia antiguo sin resumen de cobertura se revisita una vez para medirla", () => {
+test("R4: un dia con curva y sin resumen de cobertura no se descarga: lo mide la migracion desde la curva", () => {
   const resumen = { dias: { [AYER]: 288 }, diarios: {}, intentos: {} };
-  assert.ok(seleccionar(resumen, AYER, 2).includes(AYER));
+  assert.equal(seleccionar(resumen, AYER, 2).includes(AYER), false);
+  assert.deepEqual(pendientesMigracion(resumen, AYER), [AYER]);
 });
 
 // ---------------------------------------------------------------- R2

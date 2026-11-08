@@ -232,7 +232,8 @@ function entornoRotado({ clavePrevia = "AQID", clave = "AQID", fallaBaja = false
       },
     },
     pedir: async (ruta, { method, body } = {}) => {
-      llamadas.push([method || "GET", ruta, body && JSON.parse(body).endpoint?.slice(-5)]);
+      const cuerpo = body && JSON.parse(body);
+      llamadas.push([method || "GET", ruta, cuerpo?.reemplaza?.slice(-5) ?? cuerpo?.endpoint?.slice(-5)]);
       if (method === "PUT" && fallaRegistro) return new Response(JSON.stringify({ error: "servidor caido" }), { status: 500 });
       if (method === "DELETE" && fallaBajaRemota) return new Response(JSON.stringify({ error: "no" }), { status: 500 });
       return new Response("{}", { status: 200 });
@@ -251,13 +252,13 @@ test("R7: con la misma clave se reutiliza la suscripcion existente", async () =>
   assert.deepEqual(e.llamadas.find((l) => Array.isArray(l)), ["PUT", "/informe/suscripcion", undefined]);
 });
 
-test("R7: tras rotar la clave VAPID se da de baja la antigua, se crea otra y se reconcilia el servidor", async () => {
+test("R7: tras rotar la clave VAPID se da de baja la antigua, se crea otra y el mismo PUT la reemplaza en el servidor", async () => {
   const e = entornoRotado({ clavePrevia: "AQID", clave: "BAUG" });
   const r = await activarPush(e);
   assert.equal(r.estado, "activo");
   assert.deepEqual(e.llamadas.filter((l) => !Array.isArray(l)), ["baja-vieja", "subscribe"]);
   const remotas = e.llamadas.filter((l) => Array.isArray(l));
-  assert.deepEqual(remotas, [["PUT", "/informe/suscripcion", undefined], ["DELETE", "/informe/suscripcion", "viejo"]]);
+  assert.deepEqual(remotas, [["PUT", "/informe/suscripcion", "viejo"]]); // reemplaza: sin plaza extra
 });
 
 test("R7: si no se puede dar de baja la suscripcion antigua no se anuncia exito ni se registra nada", async () => {
@@ -269,12 +270,12 @@ test("R7: si no se puede dar de baja la suscripcion antigua no se anuncia exito 
   assert.ok(!e.llamadas.includes("subscribe"));
 });
 
-test("R7: si falla crear la nueva suscripcion se informa y se limpia el registro antiguo del servidor", async () => {
+test("R7: si falla crear la nueva suscripcion se informa y se conserva el endpoint antiguo para limpiarlo despues", async () => {
   const e = entornoRotado({ clavePrevia: "AQID", clave: "BAUG", fallaAlta: true });
   const r = await activarPush(e);
   assert.equal(r.estado, "error");
   assert.match(r.mensaje, /fallo del proveedor/);
-  assert.deepEqual(e.llamadas.filter((l) => Array.isArray(l)), [["DELETE", "/informe/suscripcion", "viejo"]]);
+  assert.deepEqual(e.llamadas.filter((l) => Array.isArray(l)), []);
 });
 
 test("R7: si el servidor rechaza la nueva suscripcion se deshace y no se anuncia exito", async () => {
@@ -283,13 +284,6 @@ test("R7: si el servidor rechaza la nueva suscripcion se deshace y no se anuncia
   assert.equal(r.estado, "error");
   assert.match(r.mensaje, /servidor caido/);
   assert.ok(e.llamadas.includes("baja-nueva"));
-});
-
-test("R7: si el servidor no limpia la suscripcion antigua el exito lo advierte", async () => {
-  const e = entornoRotado({ clavePrevia: "AQID", clave: "BAUG", fallaBajaRemota: true });
-  const r = await activarPush(e);
-  assert.equal(r.estado, "activo");
-  assert.match(r.mensaje, /antigua/);
 });
 
 test("R7: una suscripcion cuya clave no se puede comprobar se recrea", async () => {

@@ -67,6 +67,11 @@ export function configDeFormulario(v) {
 
 // ---------------------------------------------------------------- Pintado
 
+// Un canal con huecos nunca se muestra como 100 %.
+const porcentaje = (c) => {
+  const p = Math.round((c ?? 0) * 1000) / 10;
+  return (c >= 1 ? 100 : Math.min(p, 99.9)).toLocaleString("es-ES");
+};
 const num = (n) => Number(n ?? 0).toLocaleString("es-ES", { maximumFractionDigits: 2 });
 const trio = (t) => `sol ${num(t?.solar)} kWh · casa ${num(t?.casa)} kWh · compra ${num(t?.compra)} kWh`;
 
@@ -93,7 +98,7 @@ export function htmlInforme(i) {
   const [clase, rotulo] = ESTADOS[i.estado] || ["fallo", "Desconocido"];
   const cobertura = Object.entries(i.cobertura || {})
     .filter(([k]) => SENALES[k])
-    .map(([k, c]) => `<li><span>${SENALES[k]}</span> <b>${Math.round((c ?? 0) * 100)} %</b></li>`)
+    .map(([k, c]) => `<li><span>${SENALES[k]}</span> <b>${porcentaje(c)} %</b></li>`)
     .join("");
   const coste = i.coste?.estado === "no_disponible" ? `Coste no disponible: ${i.coste.motivo ?? ""}` : i.coste ? `${i.coste.estado === "estimado" ? "Estimación del coste" : "Coste de la energía comprada"}${i.coste.parcial ? ", al menos" : ""}: ≈ ${(i.coste.euros ?? 0).toLocaleString("es-ES", { minimumFractionDigits: 2 })} € (${i.coste.aviso ?? ""})` : "";
   const hoy = i.hoy;
@@ -131,63 +136,76 @@ export function htmlIndice(informes, seleccionada) {
 
 const mensajeDe = async (r) => (await r.json().catch(() => ({}))).error || `Error ${r.status}`;
 
-export async function activarPush({ notification, registro, pedir, clave }) {
+// Endpoint del registro antiguo de este dispositivo mientras una rotacion de clave VAPID no termina.
+export const CLAVE_PENDIENTE = "solar-informe-push-pendiente";
+const mismaClave = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+const seguro = (f) => {
+  try {
+    return f();
+  } catch {
+    return null;
+  }
+};
+
+export async function activarPush({ notification, registro, pedir, clave, almacen = null }) {
   if (notification.permission === "denied") return { estado: "denegado", mensaje: "Las notificaciones están bloqueadas en los ajustes del dispositivo." };
   const permiso = notification.permission === "granted" ? "granted" : await notification.requestPermission();
   if (permiso !== "granted") return { estado: "denegado", mensaje: "No se ha concedido el permiso de notificaciones." };
+  const leer = () => seguro(() => almacen?.getItem(CLAVE_PENDIENTE)) || null;
+  const guardar = (endpoint) => seguro(() => (endpoint ? almacen?.setItem(CLAVE_PENDIENTE, endpoint) : almacen?.removeItem(CLAVE_PENDIENTE)));
+
   const previa = await registro.pushManager.getSubscription();
   const esperada = claveABytes(clave);
   const actual = previa?.options?.applicationServerKey;
   const igual = !!actual && mismaClave(new Uint8Array(actual.buffer ?? actual), esperada);
+  let viejo = leer();
   if (previa && igual) return registrar(previa, false);
 
-  // Tras rotar la clave VAPID la suscripcion antigua ya no vale: se da de baja y se crea otra.
-  let viejoEndpoint = null;
+  // Tras rotar la clave VAPID la suscripcion antigua ya no vale. Se apunta su endpoint antes de darla de
+  // baja para poder reemplazarla en el servidor (sin gastar una plaza) aunque falle algun paso.
   if (previa) {
-    viejoEndpoint = previa.endpoint;
-    let baja = false;
-    try {
-      baja = await previa.unsubscribe();
-    } catch {}
-    if (!baja) return { estado: "error", mensaje: "No se ha podido dar de baja la suscripción anterior de este dispositivo. Inténtalo de nuevo." };
+    const anterior = viejo;
+    viejo = previa.endpoint;
+    guardar(viejo);
+    const baja = await Promise.resolve(previa.unsubscribe()).catch(() => false);
+    if (!baja) {
+      guardar(anterior);
+      return { estado: "error", mensaje: "No se ha podido dar de baja la suscripción anterior de este dispositivo. Inténtalo de nuevo." };
+    }
   }
   let sub;
   try {
     sub = await registro.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: esperada });
   } catch (e) {
-    if (viejoEndpoint) await bajaRemota(viejoEndpoint);
-    return { estado: "error", mensaje: `No se ha podido crear la suscripción: ${e?.message || "error del navegador"}` };
+    return { estado: "error", mensaje: `No se ha podido crear la suscripción: ${e?.message || "error del navegador"}. Al volver a pulsar Activar se reintentará y se limpiará el registro antiguo.` };
   }
-  return registrar(sub, true, viejoEndpoint);
+  return registrar(sub, true);
 
-  async function registrar(suscripcion, nueva, viejo) {
-    const r = await pedir("/informe/suscripcion", { method: "PUT", body: JSON.stringify({ suscripcion: suscripcion.toJSON() }) });
+  async function registrar(suscripcion, nueva) {
+    const cuerpo = { suscripcion: suscripcion.toJSON() };
+    if (viejo && viejo !== suscripcion.endpoint) cuerpo.reemplaza = viejo;
+    const r = await pedir("/informe/suscripcion", { method: "PUT", body: JSON.stringify(cuerpo) });
     if (!r.ok) {
       const mensaje = await mensajeDe(r);
-      if (nueva) await suscripcion.unsubscribe().catch(() => {});
+      if (nueva) await Promise.resolve(suscripcion.unsubscribe()).catch(() => {});
       return { estado: "error", mensaje };
     }
-    if (viejo && !(await bajaRemota(viejo))) return { estado: "activo", mensaje: "Notificaciones activadas en este dispositivo. La suscripción antigua no se ha podido quitar del servidor; no recibirás avisos duplicados en este dispositivo, pero conviene desactivar y activar de nuevo." };
+    guardar(null);
     return { estado: "activo", mensaje: "Notificaciones activadas en este dispositivo." };
-  }
-
-  async function bajaRemota(endpoint) {
-    try {
-      return (await pedir("/informe/suscripcion", { method: "DELETE", body: JSON.stringify({ endpoint }) })).ok;
-    } catch {
-      return false;
-    }
   }
 }
 
-const mismaClave = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
-
-export async function desactivarPush({ registro, pedir }) {
+export async function desactivarPush({ registro, pedir, almacen = null }) {
   const sub = await registro.pushManager.getSubscription();
-  if (!sub) return { estado: "inactivo", mensaje: "Este dispositivo no estaba suscrito." };
-  const r = await pedir("/informe/suscripcion", { method: "DELETE", body: JSON.stringify({ endpoint: sub.endpoint }) });
-  if (!r.ok) return { estado: "error", mensaje: `El servidor no ha podido quitar la suscripción: ${await mensajeDe(r)}` };
-  await sub.unsubscribe();
+  const pendiente = seguro(() => almacen?.getItem(CLAVE_PENDIENTE)) || null;
+  const endpoints = [...new Set([sub?.endpoint, pendiente].filter(Boolean))];
+  if (!endpoints.length) return { estado: "inactivo", mensaje: "Este dispositivo no estaba suscrito." };
+  for (const endpoint of endpoints) {
+    const r = await pedir("/informe/suscripcion", { method: "DELETE", body: JSON.stringify({ endpoint }) });
+    if (!r.ok) return { estado: "error", mensaje: `El servidor no ha podido quitar la suscripción: ${await mensajeDe(r)}` };
+  }
+  seguro(() => almacen?.removeItem(CLAVE_PENDIENTE));
+  if (sub) await sub.unsubscribe();
   return { estado: "inactivo", mensaje: "Notificaciones desactivadas en este dispositivo." };
 }
 
@@ -255,6 +273,7 @@ export function iniciarInforme({ $, pedirNube, hayNube, abrirPestana }) {
     registro: null,
     pedir,
     clave: configCargada?.vapid?.publica,
+    almacen: seguro(() => globalThis.localStorage),
   });
   const registro = () => navigator.serviceWorker.ready;
 

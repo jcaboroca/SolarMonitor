@@ -3,7 +3,8 @@
 // hay y la energia por horas para los habitos). Se recupera lo atrasado poco a
 // poco: el plan gratuito da 10 ms de CPU por ejecucion.
 
-import { integrarDia, resumirDia, diaCompleto, firmaDia } from "./informe-calculo.js";
+import { integrarDia, resumirDia, diaCompleto, versionIntegrado, versionAgregados } from "./informe-calculo.js";
+import { limitesDia } from "./horario.js";
 import { diaMadrid, sumarDias } from "./horario.js";
 
 const BASE = "https://globalhome.solarmanpv.com";
@@ -11,6 +12,8 @@ const HORA = 3600000;
 export const RESUMEN = "solarman-curvas";
 // Ayer ya integrado (pequeno): el informe lo lee en vez de reprocesar la curva del mes.
 export const AYER_INTEGRADO = "solarman-dia";
+// Version pequena (ayer, contenido y agregados) que el cron lee para saber si hay que actualizar el informe.
+export const MARCA_VERSION = "solarman-version";
 export const claveMes = (mes) => `solarman-curva-${mes}`;
 // Antes de mayo de 2026 el portal no tiene curva (el datalogger se instalo hacia entonces).
 export const INICIO = "2026-05-01";
@@ -22,6 +25,9 @@ const PASO_MAXIMO = 7.5 * 60;
 const DIAS_RECIENTES = 7;
 export const MAX_INTENTOS = 8;
 const DIAS_RESUMEN = 70;
+// Dias heredados que se resumen por vuelta desde sus curvas ya guardadas (acota CPU y lecturas de KV).
+export const LOTE_MIGRACION = 2;
+const DIAS_MIGRACION = 62;
 const SENALES = ["solar", "casa", "compra", "venta", "carga", "descarga"];
 
 export const diaLocal = (t) => diaMadrid(t);
@@ -74,9 +80,46 @@ export function pendientes(resumen, ayer, maximo) {
 
 const restarDias = (dia, n) => sumarDias(dia, -n);
 
-/** Un dia esta completo por la cobertura de sus senales, no por el numero de filas. */
-const incompleto = (resumen, dia) => !diaCompleto(resumen?.diarios?.[dia]);
-const calidad = (d) => SENALES.reduce((s, k) => s + (d?.cob?.[k] ?? 0), 0);
+/**
+ * Un dia esta completo por la cobertura medida de sus senales, no por el numero de filas. Sin
+ * resumen todavia (dato heredado con curva) no se vuelve a descargar: lo mide la migracion.
+ */
+const incompleto = (resumen, dia) => {
+  const d = resumen?.diarios?.[dia];
+  return d ? !diaCompleto(d) : (resumen?.dias?.[dia] ?? 0) === 0;
+};
+
+const util = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0;
+
+/**
+ * Une dos curvas del mismo dia por instante y senal: un valor valido nuevo corrige al guardado y uno
+ * ausente conserva el guardado. Nunca se pierde una medida valida porque otro canal mejore.
+ */
+export function reconciliar(guardado, nuevo) {
+  const porInstante = new Map();
+  for (const lista of [guardado || [], nuevo || []]) {
+    for (const p of lista) {
+      if (!Array.isArray(p) || !Number.isFinite(p[0])) continue;
+      const previo = porInstante.get(p[0]);
+      if (!previo) {
+        porInstante.set(p[0], p.map((v, i) => (i === 0 ? v : (util(v) ? v : null))));
+        continue;
+      }
+      for (let i = 1; i < p.length; i++) if (util(p[i])) previo[i] = p[i];
+    }
+  }
+  return [...porInstante.values()].sort((a, b) => a[0] - b[0]);
+}
+
+/** Dias con curva guardada y sin resumen diario dentro de la ventana que usan comparacion y mes; los mas recientes primero. */
+export function pendientesMigracion(resumen, ayer) {
+  const minimo = restarDias(ayer, DIAS_MIGRACION);
+  const inicio = minimo > INICIO ? minimo : INICIO;
+  return Object.keys(resumen?.dias || {})
+    .filter((d) => d >= inicio && d <= ayer && resumen.dias[d] > 0 && !resumen.diarios?.[d])
+    .sort()
+    .reverse();
+}
 
 /**
  * Dias a pedir: primero ayer y los recientes incompletos (con intentos acotados) y despues el
@@ -91,6 +134,9 @@ export function seleccionar(resumen, ayer, maximo) {
     if (dia < INICIO) break;
     if (!(dia in dias) || incompleto(resumen, dia)) if ((intentos[dia] || 0) < MAX_INTENTOS) recientes.push(dia);
   }
+  // Ayer, aunque este completo, se vuelve a pedir cada vuelta mientras siga siendo ayer: el portal puede corregir
+  // valores. Son como mucho unas 24 peticiones y, si nada cambia, no se escribe nada.
+  if (!recientes.includes(ayer) && resumen?.fuente?.dia === ayer && ayer >= INICIO && (intentos[ayer] || 0) < MAX_INTENTOS) recientes.unshift(ayer);
   const atrasado = pendientes(resumen, ayer, maximo).filter((d) => !recientes.includes(d));
   const cupo = Math.ceil(maximo / 2);
   const lista = [...recientes.slice(0, cupo), ...atrasado.slice(0, maximo)].slice(0, maximo);
@@ -105,15 +151,21 @@ export async function archivar(entorno, { ahora = Date.now(), pedir = fetch, max
 
   const resumen = (await kv.get(RESUMEN, "json")) || { dias: {}, horas: [] };
   const ayer = sumarDias(diaMadrid(ahora), -1);
+  const original = JSON.stringify(resumen);
+  resumen.intentos = resumen.intentos || {};
+  resumen.diarios = resumen.diarios || {};
   const lista = seleccionar(resumen, ayer, maximo);
-  if (!lista.length) return { resultado: "al dia" };
+  const migrar = pendientesMigracion(resumen, ayer).filter((d) => !lista.includes(d)).slice(0, LOTE_MIGRACION);
+  if (!lista.length && !migrar.length) return { resultado: "al dia" };
 
   const archivos = new Map();
   const sucios = new Set();
-  const nuevas = [];
+  const reconstruidas = [];
   let instantanea = null;
-  resumen.intentos = resumen.intentos || {};
-  resumen.diarios = resumen.diarios || {};
+  const curvaDe = async (mes) => {
+    if (!archivos.has(mes)) archivos.set(mes, (await kv.get(claveMes(mes), "json")) || { columnas: COLUMNAS, dias: {} });
+    return archivos.get(mes);
+  };
   for (const dia of lista) {
     const [a, m, d] = dia.split("-").map(Number);
     const respuesta = await pedir(`${BASE}/maintain-s/history/power/${encodeURIComponent(entorno.SOLARMAN_PLANTA)}/record?year=${a}&month=${m}&day=${d}`, {
@@ -126,37 +178,60 @@ export async function archivar(entorno, { ahora = Date.now(), pedir = fetch, max
       break;
     }
     const puntos = compactar((await respuesta.json())?.records);
-    const previo = resumen.dias[dia] ?? -1;
-    const integrado = puntos.length ? integrarDia(puntos, dia) : null;
-    const resumido = integrado && resumirDia(integrado);
-    const guardado = resumen.diarios[dia];
-    // Mejora por cobertura medida; sin resumen previo (datos antiguos) se compara por filas.
-    const mejora = guardado ? !!resumido && calidad(resumido) >= calidad(guardado) : puntos.length >= previo;
-    if (mejora) {
-      resumen.dias[dia] = puntos.length;
-      if (puntos.length) {
-        const mes = dia.slice(0, 7);
-        if (!archivos.has(mes)) archivos.set(mes, (await kv.get(claveMes(mes), "json")) || { columnas: COLUMNAS, dias: {} });
-        archivos.get(mes).dias[dia.slice(8)] = puntos;
-        sucios.add(mes);
-        nuevas.push(...aHoras(puntos));
-        resumen.diarios[dia] = resumido;
-        if (dia === ayer) instantanea = { integrado, firma: firmaDia(resumido.cob) };
+    if (!puntos.length) {
+      if (!(dia in resumen.dias)) resumen.dias[dia] = 0;
+    } else {
+      const mes = dia.slice(0, 7);
+      const curva = await curvaDe(mes);
+      const guardada = curva.dias[dia.slice(8)];
+      const fusion = reconciliar(guardada, puntos);
+      const cambia = JSON.stringify(fusion) !== JSON.stringify(guardada);
+      resumen.dias[dia] = fusion.length;
+      if (cambia || !resumen.diarios[dia] || (dia === ayer && resumen.fuente?.dia !== ayer)) {
+        const integrado = integrarDia(fusion, dia);
+        resumen.diarios[dia] = resumirDia(integrado);
+        if (cambia) {
+          curva.dias[dia.slice(8)] = fusion;
+          sucios.add(mes);
+          reconstruidas.push([dia, aHoras(fusion)]);
+        }
+        if (dia === ayer) instantanea = { integrado, h: versionIntegrado(integrado) };
       }
     }
     if (diaCompleto(resumen.diarios[dia])) delete resumen.intentos[dia];
     else if (reciente) resumen.intentos[dia] = (resumen.intentos[dia] || 0) + 1;
   }
+  // Migracion incremental: resume desde la curva ya guardada, sin descargar nada.
+  for (const dia of migrar) {
+    const curva = await curvaDe(dia.slice(0, 7));
+    resumen.diarios[dia] = resumirDia(integrarDia(curva.dias[dia.slice(8)] || [], dia));
+  }
   for (const mes of sucios) await kv.put(claveMes(mes), JSON.stringify(archivos.get(mes)));
-  if (instantanea) await kv.put(AYER_INTEGRADO, JSON.stringify({ dia: ayer, firma: instantanea.firma, integrado: instantanea.integrado }));
+  if (instantanea && resumen.fuente?.dia === ayer && resumen.fuente.h === instantanea.h) instantanea = null;
+  if (instantanea) {
+    await kv.put(AYER_INTEGRADO, JSON.stringify({ dia: ayer, h: instantanea.h, integrado: instantanea.integrado }));
+    resumen.fuente = { dia: ayer, h: instantanea.h };
+  }
+  // Las horas de un dia reconciliado se rehacen enteras desde la misma curva, sin restos antiguos.
   const horas = new Map((resumen.horas || []).map((h) => [h[0], h]));
-  for (const h of nuevas) horas.set(h[0], h);
+  for (const [dia, filas] of reconstruidas) {
+    const { inicio, fin } = limitesDia(dia);
+    for (const clave of [...horas.keys()]) if (clave >= inicio / HORA && clave < fin / HORA) horas.delete(clave);
+    for (const h of filas) horas.set(h[0], h);
+  }
   resumen.horas = [...horas.values()].sort((x, y) => x[0] - y[0]).slice(-MAX_HORAS);
   const limite = restarDias(ayer, DIAS_RESUMEN);
   for (const d of Object.keys(resumen.diarios)) if (d < limite) delete resumen.diarios[d];
   for (const d of Object.keys(resumen.intentos)) if (d < restarDias(ayer, 30)) delete resumen.intentos[d];
-  await kv.put(RESUMEN, JSON.stringify(resumen));
-  return { resultado: "archivado", dias: lista.filter((d) => d in resumen.dias) };
+  {
+    const marca = JSON.stringify({ dia: ayer, f: resumen.fuente?.dia === ayer ? resumen.fuente.h : null, a: versionAgregados(resumen.diarios, ayer), m: pendientesMigracion(resumen, ayer).length });
+    if (marca !== resumen.marca) {
+      await kv.put(MARCA_VERSION, marca);
+      resumen.marca = marca;
+    }
+  }
+  if (JSON.stringify(resumen) !== original) await kv.put(RESUMEN, JSON.stringify(resumen));
+  return { resultado: lista.length ? "archivado" : "migrado", dias: lista.filter((d) => d in resumen.dias), migrados: migrar };
 }
 
 /** Meses disponibles: { "2026-05": numero de dias con curva }. */

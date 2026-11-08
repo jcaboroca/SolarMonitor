@@ -203,7 +203,13 @@ Las claves VAPID se rotan con otro `secret put`; los dispositivos deben reactiva
 
 ### Límites medidos (importante)
 
-Estado de un informe: «Completo» exige ≥98 % de cobertura en cada señal necesaria; por debajo es «Parcial» y el coste, si la cobertura de compra es ≥75 %, se presenta como «al menos» (mínimo observado, sin extrapolar). Un informe parcial se regenera si el archivo mejora después (firma de cobertura distinta), con un máximo acotado de reintentos.
+Estado de un informe: «Completo» exige que no falten más de ~30 s medidos en cada señal necesaria (tolerancia solo numérica, no minutos omitidos): un muestreo perdido ya es «Parcial». La cobertura se decide sin redondear y se redondea solo al mostrarla (nunca se enseña 100 % si hay huecos). Si la cobertura de compra es ≥75 %, el coste se presenta como «al menos» (mínimo observado, sin extrapolar).
+
+Actualización de datos: `archivar` pide ayer cada hora mientras siga siendo ayer (como mucho ~24 peticiones, sin escrituras si nada cambia) y reconcilia la curva por instante y señal: un valor válido nuevo corrige al guardado y un dato ausente conserva el guardado; las horas del día se rehacen desde esa misma curva. Publica una marca pequeña (`solarman-version`) con un hash del contenido aceptado de ayer y de los agregados anteriores; el cron regenera el informe (completo o parcial, máximo `MAX_REGENERACIONES` extra) cuando esa versión difiere de la del informe, sin reenviar el aviso ya entregado.
+
+Migración de días heredados: los días con curva y sin resumen diario (de hace más de 7 días o de meses previos, hasta 62 días atrás) se resumen desde la curva ya guardada, sin descargar, `LOTE_MIGRACION` (2) por ejecución, los más recientes primero. Mientras queden, el informe lo indica en el acumulado del mes; al terminar se regenera una vez con los agregados completos. Sin curva no se puede medir: el día queda incompleto y se revisita con intentos acotados.
+
+Rotación de la clave VAPID: el cliente guarda el endpoint antiguo antes de darlo de baja y el `PUT /informe/suscripcion` admite `reemplaza` (solo el endpoint propio, validado), de modo que con 5 dispositivos no hace falta plaza extra; si algo falla, la referencia se conserva y «Desactivar»/reintentar la limpian.
 
 `node scripts/medir-informe.mjs` (datos sintéticos, 30 días, CPU de Node en esta
 máquina, **no** medida de Cloudflare): generar el informe cuesta ~12–24 ms en
@@ -216,8 +222,7 @@ gratuito, así que sigue siendo un riesgo de despliegue sin validar en Cloudflar
 real: alternativas seguras, plan Workers de pago o dividir en invocaciones más
 pequeñas; no se ha cambiado el alojamiento.
 
-Presupuesto de KV por día: `archivar` hace cada hora como mucho 2 escrituras (mes
-y resumen) más 1 de `solarman-dia` cuando recoge ayer, con un máximo de 8 intentos
+Presupuesto de KV por día: `archivar` hace cada hora como mucho una escritura por mes tocado, 1 del resumen, 1 de `solarman-dia` y 1 de `solarman-version` solo si su contenido cambia, con un máximo de 8 intentos
 por día; el informe, 1 escritura del informe, 1 del índice, 2 del bloqueo y 1 por
 dispositivo notificado. Las regeneraciones por mejora del archivo están acotadas
 (`MAX_REGENERACIONES`, 4 extra) y no reenvían el aviso ya enviado.

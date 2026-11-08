@@ -1,14 +1,14 @@
 // Informe diario: generacion a las 08:30 de Madrid, persistencia, envio de push y API.
 // Todo en KV (el mismo HISTORICO). Nada de aqui toca el paquete cifrado del historico.
 
-import { claveMes, RESUMEN, AYER_INTEGRADO } from "./archivo.js";
+import { claveMes, RESUMEN, AYER_INTEGRADO, MARCA_VERSION, pendientesMigracion } from "./archivo.js";
 import { integrarDia, construirInforme, evaluarTarifa } from "./informe-calculo.js";
 import { construirHoy } from "./informe-hoy.js";
 import { diaMadrid, partesMadrid, sumarDias } from "./horario.js";
 import { configVapid, enviarPush, idSuscripcion, validarEndpoint, validarSuscripcion } from "./push.js";
 
 export const MAX_GENERACIONES = 4;
-// Regeneraciones extra, solo si el archivo de SolarMAN mejora de verdad despues de generar.
+// Regeneraciones extra, solo si cambia el contenido aceptado de SolarMAN (o los agregados) despues de generar.
 export const MAX_REGENERACIONES = 4;
 export const MAX_ENTREGAS = 3;
 const HORA_INFORME = 8 * 60 + 30;
@@ -106,7 +106,7 @@ export async function generarInforme(entorno, { ahora = Date.now(), pedir = (u, 
     const cfg = { ...CONFIG_BASE, ...(config || {}) };
     const resumen = await kv.get(RESUMEN, "json");
     const { diarios, integrado } = await leerFuente(kv, resumen, fecha);
-    informe = construirInforme({ integrado, fecha, ahora, config: cfg, diarios });
+    informe = construirInforme({ integrado, fecha, ahora, config: cfg, diarios, pendientesMigracion: pendientesMigracion(resumen, fecha).length });
     if (informe.estado !== "sin_datos") informe.hoy = await construirHoy({ config: cfg, informe, resumen, ahora, pedir });
     else informe.hoy = { fecha: diaMadrid(ahora), estado: "no_disponible", texto: "Sin datos de ayer no se prepara la recomendación de hoy.", recomendaciones: [] };
   } catch {
@@ -115,7 +115,7 @@ export async function generarInforme(entorno, { ahora = Date.now(), pedir = (u, 
   const final = informe.estado === "ok" || informe.estado === "parcial";
   // Regenerar no borra la entrega: el estado de envio de esa fecha se conserva para no duplicar avisos.
   const push = final ? (previa?.push && previa.push.estado !== "no_aplica" ? previa.push : { estado: "pendiente", pendientes: 1 }) : { estado: "no_aplica", pendientes: 0 };
-  const entrada = { fecha, estado: informe.estado, generado: informe.generado, intentos, firma: informe.firma ?? null, push };
+  const entrada = { fecha, estado: informe.estado, generado: informe.generado, intentos, version: informe.version ?? null, push };
   await kv.put(claveInforme(fecha), JSON.stringify(informe));
   await guardarIndice(kv, indice, entrada);
   return { informe, entrada };
@@ -168,13 +168,18 @@ export async function programado(entorno, { ahora = Date.now(), pedir = (u, i) =
   const indice = await kv.get("informe-indice", "json");
   const previa = indice?.informes?.find((e) => e.fecha === fecha);
   const final = previa && (previa.estado === "ok" || previa.estado === "parcial");
-  // El archivo guarda ayer con su firma de cobertura: si cambia tras generar, hay datos nuevos.
-  let mejora = false;
-  if (previa && previa.estado !== "ok") {
-    const instantanea = await kv.get(AYER_INTEGRADO, "json");
-    mejora = instantanea?.dia === fecha && !!instantanea.firma && instantanea.firma !== previa.firma;
+  // El archivo publica una version pequena del contenido aceptado de ayer y de los agregados de los
+  // dias anteriores. Si no coincide con la del informe (parcial o completo), la fuente cambio.
+  let cambio = false;
+  if (final) {
+    const marca = await kv.get(MARCA_VERSION, "json");
+    if (marca?.dia === fecha) {
+      const v = previa.version;
+      // Con migracion en curso los agregados aun cambiaran: se espera a que termine para no gastar regeneraciones.
+      cambio = !v || (marca.f && v.f !== marca.f) || (v.a !== marca.a && !(marca.m > 0));
+    }
   }
-  const regenerar = mejora && previa.intentos < MAX_GENERACIONES + MAX_REGENERACIONES;
+  const regenerar = cambio && previa.intentos < MAX_GENERACIONES + MAX_REGENERACIONES;
   if (final && !previa.push?.pendientes && !regenerar) return { resultado: "completo" };
   if (previa && !final && previa.intentos >= MAX_GENERACIONES && !regenerar) return { resultado: "agotado" };
 
@@ -248,9 +253,16 @@ export async function manejarInforme(peticion, entorno, url, responder, { ahora 
     if (!v.ok) return error(v.error, 400);
     const subs = (await kv.get("informe-subs", "json")) || { dispositivos: [] };
     const id = await idSuscripcion(v.valor.endpoint);
-    const otros = subs.dispositivos.filter((d) => d.id !== id);
+    // `reemplaza`: el cliente cambia su propio registro (p. ej. tras rotar la clave VAPID) sin gastar una plaza.
+    let reemplazado = null;
+    if (c.valor?.reemplaza != null) {
+      const viejo = validarEndpoint(c.valor.reemplaza);
+      if (!viejo) return error("El endpoint a reemplazar no es válido.", 400);
+      reemplazado = subs.dispositivos.find((d) => d.endpoint === viejo && d.id !== id) || null;
+    }
+    const otros = subs.dispositivos.filter((d) => d.id !== id && d !== reemplazado);
     if (otros.length >= MAX_DISPOSITIVOS) return error(`Solo se admiten ${MAX_DISPOSITIVOS} dispositivos. Quita alguno antes de añadir otro.`, 409);
-    const previo = subs.dispositivos.find((d) => d.id === id);
+    const previo = subs.dispositivos.find((d) => d.id === id) || reemplazado;
     const registro = { id, ...v.valor, creada: previo?.creada || new Date(ahora).toISOString(), entrega: previo?.entrega || {} };
     await kv.put("informe-subs", JSON.stringify({ dispositivos: [...otros, registro] }));
     return json({ guardado: true, suscripciones: otros.length + 1 });

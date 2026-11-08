@@ -4,7 +4,7 @@
 import { generarInforme, programado } from "../worker/src/informe.js";
 import { limitesDia, sumarDias } from "../worker/src/horario.js";
 import { archivar, AYER_INTEGRADO } from "../worker/src/archivo.js";
-import { integrarDia, resumirDia, firmaDia } from "../worker/src/informe-calculo.js";
+import { integrarDia, resumirDia, versionIntegrado } from "../worker/src/informe-calculo.js";
 
 const AHORA = Date.UTC(2026, 10, 30, 7, 30); // 08:30 en Madrid
 const AYER = "2026-11-29";
@@ -35,7 +35,7 @@ for (let d = 1; d <= 29; d++) {
 }
 const resumen = { dias: Object.fromEntries(Object.keys(diarios).map((f) => [f, 288])), horas, diarios };
 const integradoAyer = integrarDia(dias["29"], AYER);
-const instantanea = { dia: AYER, firma: firmaDia(resumirDia(integradoAyer).cob), integrado: integradoAyer };
+const instantanea = { dia: AYER, h: versionIntegrado(integradoAyer), integrado: integradoAyer };
 
 // Las respuestas de Open-Meteo se preparan fuera de la medicion; el JSON.parse sigue contando.
 const respuestas = new Map();

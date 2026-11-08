@@ -65,7 +65,7 @@ test("pendientes coge el primer mes incompleto", () => {
   assert.deepEqual(pendientes(casi, "2026-10-03", 3), ["2026-05-31"]);
 });
 
-test("archivar guarda la curva del mes y el resumen con dos escrituras", async () => {
+test("archivar guarda la curva del mes y el resumen con tres escrituras (curva, marca de version y resumen)", async () => {
   const kv = kvFalso(conAyerCompleto);
   const pedidas = [];
   const pedir = async (url) => {
@@ -76,7 +76,7 @@ test("archivar guarda la curva del mes y el resumen con dos escrituras", async (
   const r = await archivar({ HISTORICO: kv, SOLARMAN_PLANTA: "123" }, { pedir, ahora: Date.UTC(2026, 9, 4, 10), maximo: 2 });
   assert.equal(r.resultado, "archivado");
   assert.deepEqual(r.dias, ["2026-05-01", "2026-05-02"]);
-  assert.equal(kv.escrituras, 2);
+  assert.equal(kv.escrituras, 3);
   assert.match(pedidas[0], /history\/power\/123\/record\?year=2026&month=5&day=1$/);
   const mes = kv.leer(claveMes("2026-05"));
   assert.equal(mes.dias["01"].length, 288);
@@ -88,7 +88,7 @@ test("un dia sin curva se marca para no repetirlo y no escribe el mes", async ()
   const kv = kvFalso(conAyerCompleto);
   const r = await archivar({ HISTORICO: kv, SOLARMAN_PLANTA: "1" }, { pedir: async () => json({ records: [] }), ahora: Date.UTC(2026, 9, 4, 10), maximo: 1 });
   assert.equal(r.resultado, "archivado");
-  assert.equal(kv.escrituras, 1);
+  assert.equal(kv.escrituras, 2); // marca de version y resumen; la curva no se escribe
   assert.equal(kv.leer(RESUMEN).dias["2026-05-01"], 0);
 });
 
@@ -153,11 +153,17 @@ test("el dia parcial mejora cuando llegan mas datos y deja de revisitarse al com
   const entorno = { HISTORICO: kv, SOLARMAN_PLANTA: "1" };
   const completos = {};
   for (let t = Date.UTC(2026, 4, 1); t <= Date.UTC(2026, 9, 2); t += 86400000) completos[new Date(t).toISOString().slice(0, 10)] = 288;
-  await kv.put(RESUMEN, JSON.stringify({ dias: { ...completos, "2026-10-03": 100 }, diarios: diariosCompletos(completos), horas: [] }));
+  await kv.put(RESUMEN, JSON.stringify({ dias: { ...completos, "2026-10-03": 100 }, diarios: { ...diariosCompletos(completos), "2026-10-03": { cob: { solar: 0.3, casa: 0.3, compra: 0.3 } } }, horas: [] }));
   const ahora = Date.UTC(2026, 9, 4, 10);
   await archivar(entorno, { pedir: portal({}), ahora, maximo: 1 });
   assert.equal(kv.leer(RESUMEN).dias["2026-10-03"], 288);
-  await archivar(entorno, { pedir: async () => assert.fail("completo: no se pide"), ahora, maximo: 1 });
+  // Ayer completo se sigue pidiendo (el portal puede corregirlo) pero sin cambios no escribe nada.
+  const antes = kv.escrituras;
+  const pedidas = [];
+  await archivar(entorno, { pedir: async (u) => (pedidas.push(u), portal({})(u)), ahora, maximo: 1 });
+  assert.equal(pedidas.length, 1);
+  assert.match(pedidas[0], /day=3$/);
+  assert.equal(kv.escrituras, antes);
 });
 
 test("una revisita con menos puntos no borra lo ya archivado", async () => {
