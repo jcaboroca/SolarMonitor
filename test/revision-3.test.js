@@ -8,7 +8,7 @@ import { createECDH, randomBytes, generateKeyPairSync } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { limitesDia, sumarDias } from "../worker/src/horario.js";
 import { integrarDia, resumirDia, construirInforme } from "../worker/src/informe-calculo.js";
-import { archivar, aHoras, reconciliar, RESUMEN, claveMes, AYER_INTEGRADO, MARCA_VERSION } from "../worker/src/archivo.js";
+import { archivar, aHoras, reconciliar, RESUMEN, claveMes, AYER_INTEGRADO, MARCA_VERSION, MAX_INTENTOS } from "../worker/src/archivo.js";
 import { htmlInforme } from "../js/informe.js";
 import { programado } from "../worker/src/informe.js";
 import { b64url } from "../worker/src/push.js";
@@ -158,10 +158,12 @@ function horasHeredadas() {
 for (const migrar of [false, true]) {
   test(`C heredado: ${migrar ? "migrar la curva local" : "redescargar una curva identica"} repara las horas antiguas`, async () => {
     const puntos = dia(AYER, { saltar: (n) => n % 2 === 1, valores: { solar: 400 } });
+    const otros = Object.fromEntries(dias([2026, 4, 1], [2026, 10, 6]).map((d) => [d, 0]));
     const kv = kvFalso({
       ...sesion,
       [RESUMEN]: {
-        dias: { [AYER]: 144 }, horas: horasHeredadas(),
+        dias: { ...otros, [AYER]: 144 }, horas: horasHeredadas(),
+        intentos: Object.fromEntries(Array.from({ length: 6 }, (_, i) => [sumarDias(AYER, -i - 1), MAX_INTENTOS])),
         diarios: migrar ? {} : { [AYER]: resumirDia(integrarDia(puntos, AYER)) },
       },
       [claveMes("2026-11")]: { columnas: [], dias: { "07": puntos } },

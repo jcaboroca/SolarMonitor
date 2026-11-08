@@ -3,8 +3,8 @@ import { diaMadrid, sumarDias, partesMadrid } from "./horario.js";
 import { RESUMEN } from "./archivo.js";
 import { prepararPrevision, prepararCalibracion } from "./informe-hoy.js";
 import { prepararFuente, generarInforme, programado, cambioInforme, refrescarAnterior, MAX_GENERACIONES, MAX_REGENERACIONES } from "./informe.js";
+import { leerTrabajo, TRABAJO, INTENTO } from "./informe-estado.js";
 
-const TRABAJO = "informe-trabajo";
 const LOCK = "informe-fases-lock";
 const PREPARAR_DESDE = 8 * 60 + 25;
 const AVISAR_DESDE = 8 * 60 + 30;
@@ -24,7 +24,7 @@ function nuevoTrabajo(config, ahora, manual) {
 
 export async function solicitarInforme(entorno, { ahora = Date.now() } = {}) {
   const kv = entorno.HISTORICO;
-  const [config, previo] = await Promise.all([kv.get("informe-config", "json"), kv.get(TRABAJO, "json")]);
+  const [config, previo] = await Promise.all([kv.get("informe-config", "json"), leerTrabajo(kv)]);
   const enCurso = previo?.fecha === fechaInforme(ahora) && previo.config === firma(config)
     && previo.fase !== "completo" && previo.intentosFase < MAX_INTENTOS_FASE;
   if (!enCurso) await kv.put(TRABAJO, JSON.stringify(nuevoTrabajo(config, ahora, true)));
@@ -40,7 +40,7 @@ async function preparado(kv, trabajo, fase) {
 export async function avanzarInforme(entorno, { ahora = Date.now(), pedir = (u, i) => fetch(u, i) } = {}) {
   const kv = entorno.HISTORICO;
   const config = await kv.get("informe-config", "json");
-  let trabajo = await kv.get(TRABAJO, "json");
+  let trabajo = await leerTrabajo(kv);
   const fecha = fechaInforme(ahora);
   const minutos = partesMadrid(ahora).minutosDia;
   const manual = trabajo?.fecha === fecha && trabajo.manual && trabajo.fase !== "completo";
@@ -63,7 +63,7 @@ export async function avanzarInforme(entorno, { ahora = Date.now(), pedir = (u, 
       if (previa?.push?.pendientes && minutos >= AVISAR_DESDE) trabajo = { ...trabajo, fase: "aviso" };
       else {
         const anterior = await refrescarAnterior(kv, indice, { fecha, ahora });
-        return anterior ? { ...anterior, fase: "refresco" } : { resultado: "completo" };
+        return anterior ?? { resultado: "completo" };
       }
     }
   }
@@ -75,6 +75,10 @@ export async function avanzarInforme(entorno, { ahora = Date.now(), pedir = (u, 
   await kv.put(LOCK, JSON.stringify({ hasta: ahora + 120000 }));
   const fase = trabajo.fase;
   try {
+    // Una terminacion por CPU no ejecuta catch/finally. Consumir el intento antes del trabajo.
+    trabajo = { ...trabajo, intentosFase: trabajo.intentosFase + 1, reintentarDesde: ahora + 60000,
+      error: `Fase ${fase} iniciada; pendiente de completar.`, actualizado: new Date(ahora).toISOString() };
+    await kv.put(INTENTO, JSON.stringify(trabajo));
     let valor;
     let siguiente;
     if (fase === "fuente") {
@@ -104,8 +108,8 @@ export async function avanzarInforme(entorno, { ahora = Date.now(), pedir = (u, 
       await kv.put(clave(fase), JSON.stringify({ trabajo: trabajo.id, valor }));
       // Tras tres fallos meteorologicos se conserva su estado explicito y se publica
       // el informe energetico sin inventar una prevision.
-      if (valor.estado === "meteo_no_disponible" && trabajo.intentosFase + 1 < MAX_INTENTOS_FASE) {
-        trabajo = { ...trabajo, intentosFase: trabajo.intentosFase + 1, reintentarDesde: ahora + 60000, error: "No se pudo preparar la meteorologia; se reintentara.", actualizado: new Date(ahora).toISOString() };
+      if (valor.estado === "meteo_no_disponible" && trabajo.intentosFase < MAX_INTENTOS_FASE) {
+        trabajo = { ...trabajo, error: "No se pudo preparar la meteorologia; se reintentara." };
         await kv.put(TRABAJO, JSON.stringify(trabajo));
         return { resultado: "reintento", fase, fecha };
       }
@@ -115,7 +119,7 @@ export async function avanzarInforme(entorno, { ahora = Date.now(), pedir = (u, 
     return { resultado: "preparado", fase, fecha };
   } catch {
     console.error("Fallo en fase del informe.", { fase, fecha });
-    trabajo = { ...trabajo, intentosFase: trabajo.intentosFase + 1, reintentarDesde: ahora + 60000, error: `No se pudo completar la fase ${fase}.`, actualizado: new Date(ahora).toISOString() };
+    trabajo = { ...trabajo, error: `No se pudo completar la fase ${fase}.` };
     await kv.put(TRABAJO, JSON.stringify(trabajo));
     return { resultado: "error", fase, fecha };
   } finally {

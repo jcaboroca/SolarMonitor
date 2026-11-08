@@ -6,6 +6,7 @@ import { integrarDia, construirInforme, evaluarTarifa } from "./informe-calculo.
 import { construirHoy, componerHoy } from "./informe-hoy.js";
 import { diaMadrid, partesMadrid, sumarDias } from "./horario.js";
 import { configVapid, enviarPush, idSuscripcion, validarEndpoint, validarSuscripcion } from "./push.js";
+import { leerTrabajo } from "./informe-estado.js";
 
 export const MAX_GENERACIONES = 4;
 // Regeneraciones extra, solo si cambia el contenido aceptado de SolarMAN (o los agregados) despues de generar.
@@ -190,34 +191,71 @@ export async function cambioInforme(kv, previa, fecha) {
 
 /**
  * Un informe fechado anterior a ayer generado mientras se migraban dias que entran en sus acumulados queda
- * marcado (`huella.p`). Al terminar la migracion se rehace, de uno en uno, para su fecha original; conserva la
- * recomendacion de hoy original (con una nota) y el estado de entrega, y no envia nada.
+ * marcado (`huella.p`). Al terminar la migracion se prepara su fuente y, en otra invocacion, se compone para
+ * su fecha original; conserva la recomendacion de hoy original (con una nota) y la entrega, sin enviar nada.
  */
 export async function refrescarAnterior(kv, indice, { fecha: ayer, ahora }) {
   const minimo = sumarDias(ayer, -DIAS_REFRESCO);
-  const candidata = (indice?.informes || [])
-    .filter((e) => e.fecha < ayer && e.fecha >= minimo && (e.estado === "ok" || e.estado === "parcial") && huellaDe(e)?.p && (e.refrescos || 0) < MAX_REFRESCOS)
-    .sort((a, b) => a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0)[0];
-  if (!candidata) return null;
+  const candidatas = (indice?.informes || [])
+    .filter((e) => e.fecha < ayer && e.fecha >= minimo && (e.estado === "ok" || e.estado === "parcial") && huellaDe(e)?.p
+      && (e.refrescos || 0) < MAX_REFRESCOS)
+    .sort((a, b) => a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0);
+  if (!candidatas.length) return null;
+  let candidata;
+  let reserva;
+  let claveIntento;
+  for (const entrada of candidatas) {
+    claveIntento = `informe-refresco-intento-${entrada.fecha}-${entrada.refresco?.fase || "fuente"}`;
+    reserva = await kv.get(claveIntento, "json");
+    if (reserva?.generado !== entrada.generado) reserva = null;
+    if ((reserva?.intentos || 0) < MAX_REFRESCOS) {
+      candidata = entrada;
+      break;
+    }
+  }
+  if (!candidata) return { resultado: "agotado", fase: `refresco_${candidatas[0].refresco?.fase || "fuente"}`, fecha: candidatas[0].fecha };
+  if (reserva?.reintentarDesde > ahora || ahora - Date.parse(candidata.refresco?.actualizado) < 1100) {
+    return { resultado: "esperando", fase: `refresco_${candidata.refresco?.fase || "fuente"}`, fecha: candidata.fecha };
+  }
   const marca = await kv.get(MARCA_VERSION, "json");
   if (marca?.dia !== ayer || marca.m > 0) return null;
   const bloqueo = await kv.get("informe-lock", "json");
   if (bloqueo?.hasta > ahora) return null;
   await kv.put("informe-lock", JSON.stringify({ hasta: ahora + LOCK_MS }));
+  const fecha = candidata.fecha;
+  const fase = candidata.refresco?.fase || "fuente";
+  const claveFuente = `informe-refresco-fuente-${fecha}`;
   try {
-    const fecha = candidata.fecha;
-    const [previo, config, resumen] = await Promise.all([kv.get(claveInforme(fecha), "json"), kv.get("informe-config", "json"), kv.get(RESUMEN, "json")]);
+    // La reserva persiste incluso si el runtime termina durante la integracion o composicion.
+    await kv.put(claveIntento, JSON.stringify({ generado: candidata.generado, intentos: (reserva?.intentos || 0) + 1,
+      reintentarDesde: ahora + 60000 }), { expirationTtl: 7 * 86400 });
+    const previo = await kv.get(claveInforme(fecha), "json");
     if (!previo || (previo.estado !== "ok" && previo.estado !== "parcial")) return null;
-    const { diarios, integrado } = await leerFuente(kv, resumen, fecha);
-    const informe = construirInforme({ integrado, fecha, ahora, config: { ...CONFIG_BASE, ...(config || {}) }, diarios, pendientesMigracion: pendientesRelevantes(resumen, fecha, ayer).length });
+    if (fase === "fuente") {
+      const resumen = await kv.get(RESUMEN, "json");
+      const fuente = await leerFuente(kv, resumen, fecha);
+      await kv.put(claveFuente, JSON.stringify({ ...fuente, fecha, generado: previo.generado,
+        pendientesMigracion: pendientesRelevantes(resumen, fecha, ayer).length }), { expirationTtl: 7 * 86400 });
+      await guardarIndice(kv, await kv.get("informe-indice", "json"), { ...candidata, refresco: { fase: "informe", actualizado: new Date(ahora).toISOString() } });
+      return { resultado: "preparado", fase: "refresco_fuente", fecha };
+    }
+    const [fuente, config] = await Promise.all([kv.get(claveFuente, "json"), kv.get("informe-config", "json")]);
+    if (fuente?.fecha !== fecha || fuente.generado !== previo.generado) throw new Error("Falta la fuente del refresco.");
+    const { diarios, integrado, pendientesMigracion } = fuente;
+    const informe = construirInforme({ integrado, fecha, ahora, config: { ...CONFIG_BASE, ...(config || {}) }, diarios, pendientesMigracion });
     informe.generado = previo.generado;
     informe.actualizado = new Date(ahora).toISOString();
     informe.hoy = previo.hoy ? { ...previo.hoy, nota: `Recomendación elaborada el ${previo.generado.slice(0, 10)}; no se ha recalculado al actualizar este informe.` } : null;
     informe.conclusiones.push({ tipo: "aviso", texto: "Informe actualizado después de incorporar días archivados antes: el acumulado del mes y la comparación pueden diferir de la primera versión. La recomendación de hoy es la original de ese día." });
     await kv.put(claveInforme(fecha), JSON.stringify(informe));
     const actual = (await kv.get("informe-indice", "json")) || indice;
-    await guardarIndice(kv, actual, { ...candidata, huella: informe.huella, refrescos: (candidata.refrescos || 0) + 1 });
-    return { resultado: "refrescado", fecha, estado: informe.estado };
+    const { refresco, ...anterior } = actual.informes.find((e) => e.fecha === fecha) || candidata;
+    await guardarIndice(kv, actual, { ...anterior, estado: informe.estado, huella: informe.huella, refrescos: (candidata.refrescos || 0) + 1 });
+    await kv.delete(claveFuente);
+    return { resultado: "refrescado", fase: "refresco_informe", fecha, estado: informe.estado };
+  } catch {
+    console.error("Fallo en fase del refresco.", { fase, fecha });
+    return { resultado: "error", fase: `refresco_${fase}`, fecha };
   } finally {
     await kv.delete("informe-lock");
   }
@@ -360,7 +398,7 @@ export async function manejarInforme(peticion, entorno, url, responder, { ahora 
   }
 
   if (ruta === "/informe/indice" && m === "GET") {
-    const [indice, trabajo] = await Promise.all([kv.get("informe-indice", "json"), kv.get("informe-trabajo", "json")]);
+    const [indice, trabajo] = await Promise.all([kv.get("informe-indice", "json"), leerTrabajo(kv)]);
     return json({
       informes: indice?.informes || [],
       trabajo: trabajo ? {
