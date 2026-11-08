@@ -144,4 +144,104 @@ npx wrangler secret put SOLARMAN_PLANTA   # id numérico de la planta en Solarma
 npx wrangler deploy                       # incluye el cron horario
 ```
 
-Pruebas: `node --test 'test/*.test.js'`.
+## Informe diario (pestaña 06 Informe)
+
+Cada día a las 08:30 (Europe/Madrid) el Worker genera un informe de **ayer** y
+recomendaciones para **hoy**, lo guarda por fecha y, si lo activas, avisa al iPhone
+con una notificación push genérica ("Tu informe solar está disponible") que abre
+el informe de esa fecha. **No está activo por defecto**: lo activas tú en la web
+tras configurarlo. El envío puede retrasarse por el dispositivo o la red; no se
+garantiza al minuto ni exactamente una vez (la etiqueta `informe-AAAA-MM-DD`
+suprime duplicados visibles).
+
+### Fuentes y privacidad
+
+- Los datos son el archivo SolarMAN del servidor (5 min), **no** Datadis. Datadis
+  sigue siendo una descarga manual y la confirmación con él es opcional y local.
+- El paquete cifrado de `/historico` y la clave maestra no se leen ni se tocan.
+- En el servidor (KV) solo se guarda: ajustes mínimos (tarifa con vigencia y
+  origen, ubicación aproximada, activaciones), suscripciones push (máx. 5) e
+  informes generados. Nunca contraseñas de Datadis, facturas ni claves maestras.
+- Open-Meteo recibe solo latitud/longitud redondeadas, nunca consumos.
+- Todas las rutas `/informe/*` pasan por la misma autenticación que el resto;
+  los informes no son ficheros estáticos. El push no lleva consumos ni costes.
+- Sin tarifa vigente verificada no hay euros: se ordenan kWh comprados. Un precio
+  indexado solo se muestra como estimación de media histórica, nunca como factura.
+  El precio por defecto de la factura antigua no se usa como precio actual.
+
+### Despliegue
+
+```sh
+node scripts/generar-vapid.mjs            # imprime claves y comandos; no las guardes en git
+cd worker
+npx wrangler secret put VAPID_PUBLIC_KEY
+npx wrangler secret put VAPID_PRIVATE_KEY
+npx wrangler secret put VAPID_SUBJECT     # mailto:tu@correo
+npx wrangler deploy
+```
+
+Sin esas variables el push falla con un error claro (el informe sí se genera).
+Crons (UTC): `2 * * * *` (el de siempre), y `30 6 * * *` y `30 7 * * *`, dos
+candidatos para las 08:30 de Madrid (verano/invierno). Una guarda de hora local
+(≥ 08:30 Madrid) y el estado guardado evitan generar o enviar dos veces; el cron
+horario sirve de reintento acotado (4 generaciones, 3 entregas por dispositivo).
+Los endpoints 404/410 del proveedor eliminan la suscripción; solo se aceptan
+destinos Apple, FCM y Mozilla.
+
+### iPhone
+
+iOS 16.4 o superior: Safari → Compartir → **Añadir a pantalla de inicio**, abrir
+desde el icono y en Ajustes del informe pulsar **Activar avisos** (el permiso solo
+se pide con ese gesto). Si lo deniegas: Ajustes de iOS → Notificaciones → Solar
+Monitor. Hay botón de notificación de prueba y de desactivar.
+
+### Desactivar / recuperar
+
+Desmarca el informe y los avisos en la web (o `DELETE /informe/suscripcion`);
+quitar los crons `30 6/7` de `wrangler.toml` y redesplegar lo para por completo.
+Las claves VAPID se rotan con otro `secret put`; los dispositivos deben reactivar.
+
+### Límites medidos (importante)
+
+Estado de un informe: «Completo» exige que no falten más de ~30 s medidos en cada señal necesaria (tolerancia solo numérica, no minutos omitidos): un muestreo perdido ya es «Parcial». La cobertura se decide sin redondear y se redondea solo al mostrarla (nunca se enseña 100 % si hay huecos). Si la cobertura de compra es ≥75 %, el coste se presenta como «al menos» (mínimo observado, sin extrapolar).
+
+Actualización de datos: `archivar` pide ayer cada hora mientras siga siendo ayer (como mucho ~24 peticiones, sin escrituras si nada cambia) y reconcilia la curva por instante y señal: un valor válido nuevo corrige al guardado y un dato ausente o fuera de dominio (potencia negativa, SoC fuera de 0–100; el 0 real vale) conserva el guardado. Las horas del día se rehacen desde esa curva con las mismas reglas de intervalos que el total diario (sin duplicados, recortando al día, un hueco grande cuenta un paso normal, solo suma tiempo medido): la suma horaria coincide con la diaria salvo el redondeo a Wh enteros, y los minutos de la tupla horaria son los realmente medidos de casa y de solar. Publica una marca pequeña (`solarman-version`) con un hash del contenido aceptado de ayer y otro de las dependencias efectivas del informe (solo los días completos del mes, del mes anterior hasta el mismo día y de la comparación; el historial ajeno no cuenta); el cron regenera el informe (completo o parcial, máximo `MAX_REGENERACIONES` extra) cuando esa versión difiere de la del informe, sin reenviar el aviso ya entregado.
+
+Migración de días heredados: los días con curva y sin resumen diario (de hace más de 7 días o de meses previos, hasta 62 días atrás) se resumen desde la curva ya guardada, sin descargar, `LOTE_MIGRACION` (2) por ejecución, los más recientes primero. Ayer heredado se inicializa también desde su curva (instantánea y marca) para entrar en las revisitas horarias. Solo cuentan como pendientes los días que entran en el informe; mientras queden, el informe lo indica en el acumulado del mes y al terminar se regenera una vez. Los informes fechados de los últimos 6 días generados con migración en curso quedan marcados (`huella.p`) y se refrescan de uno en uno (máx. `MAX_REFRESCOS`) para su fecha original, incluso después de medianoche: conservan la recomendación de hoy original con una nota, no reenvían avisos y mantienen el estado de entrega. El refresco de uno anterior integra su curva mensual una vez (CPU sin medir en Cloudflare). Un backfill de días que no estaban archivados (sin curva) no regenera informes ya publicados. Sin curva no se puede medir: el día queda incompleto y se revisita con intentos acotados.
+
+Rotación de la clave VAPID: el cliente guarda el endpoint antiguo antes de darlo de baja y el `PUT /informe/suscripcion` admite `reemplaza` (solo el endpoint propio, validado), de modo que con 5 dispositivos no hace falta plaza extra; si algo falla, la referencia se conserva y «Desactivar»/reintentar la limpian.
+
+Al migrar una curva local también se reconstruyen sus horas con las mismas reglas
+de intervalos que el resumen diario. Las revisitas hacen lo mismo aunque el portal
+devuelva una curva idéntica: los datos originales no cambian, pero se reparan las
+horas calculadas con reglas antiguas. Si las horas ya coinciden, no hay escritura
+adicional; tampoco se reescribe la curva mensual sin cambios.
+
+`node scripts/medir-informe.mjs` (datos sintéticos, 30 días, CPU de Node en esta
+máquina, **no** medida de Cloudflare): generar el informe cuesta ~12–24 ms en
+caliente (9–29 ms en la última medición) y ~350 ms en frío (carga de módulos); archivar un día nuevo, ~40–65 ms; el
+cron horario sin trabajo pendiente, ~0,3 ms. Desde esta revisión `archivar` guarda
+el día de ayer ya integrado (`solarman-dia`, una clave pequeña) y los totales
+diarios (`diarios`), de modo que generar **no** vuelve a procesar la curva del mes;
+antes costaba ~70–170 ms. Aun así queda por encima de los 10 ms de CPU del plan
+gratuito, así que sigue siendo un riesgo de despliegue sin validar en Cloudflare
+real: alternativas seguras, plan Workers de pago o dividir en invocaciones más
+pequeñas; no se ha cambiado el alojamiento.
+
+Presupuesto de KV por día: `archivar` hace cada hora como mucho una escritura por mes tocado, 1 del resumen, 1 de `solarman-dia` y 1 de `solarman-version` solo si su contenido cambia, con un máximo de 8 intentos
+por día; el informe, 1 escritura del informe, 1 del índice, 2 del bloqueo y 1 por
+dispositivo notificado. Las regeneraciones por mejora del archivo están acotadas
+(`MAX_REGENERACIONES`, 4 extra) y no reenvían el aviso ya enviado.
+
+Tras desplegar: la calibración de la previsión solo cuenta horas archivadas o
+reconstruidas con el formato nuevo (columna de minutos con sol medido). Necesita
+unos 5 días con datos suficientes, que pueden proceder de la migración local;
+la comparación con el mes anterior solo usa días con `diarios`, descargados o
+migrados con esta versión.
+
+### Prueba manual pendiente
+
+La recepción real en iPhone no está verificada: requiere desplegar tras la
+revisión y probarlo con el dispositivo del usuario.
+
+Pruebas: `node --test --test-concurrency=1 'test/*.test.js'`.

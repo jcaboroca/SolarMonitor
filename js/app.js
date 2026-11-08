@@ -11,6 +11,7 @@ import { leerHistorico, guardarMes, borrarMes, importarHistorico, exportarTodo, 
 import { hayNube, urlNube, claveMaestra, configurarNube, bajarDeNube, subirANube, sincronizarPronto, pedirNube } from "./nube.js";
 import * as datadis from "./datadis.js";
 import { iniciarAhora, pintarAhora } from "./ahora.js";
+import { iniciarInforme } from "./informe.js";
 import { htmlIcono, htmlFuente } from "./iconos.js";
 import { pintarRelato } from "./relato-vista.js";
 import { htmlRegla, htmlCifra } from "./lectura.js";
@@ -1446,12 +1447,14 @@ prepararDesdeSolarman();
 
 // --- Pestañas --------------------------------------------------------------
 
-const PESTANAS = ["ahora", "datos", "cuadra", "meses", "dia"];
+const PESTANAS = ["ahora", "datos", "cuadra", "meses", "dia", "informe"];
+const informe = iniciarInforme({ $, pedirNube, hayNube, abrirPestana });
 
 // Las gráficas se miden con clientWidth, que dentro de un panel oculto vale 0
 // y las deja del ancho de reserva. Por eso cada panel se repinta al mostrarse.
 function repintarPanel(nombre) {
   if (nombre === "ahora") pintarAhora();
+  if (nombre === "informe") informe.cargar();
   if (nombre === "cuadra") pintarCurvaContador();
   if (nombre === "meses") pintarHistorico();
   if (nombre === "dia" && estado.serie) {
@@ -1471,6 +1474,8 @@ function refrescarVacios() {
 }
 
 function abrirPestana(nombre, guardarEnUrl = true) {
+  // Un enlace de notificación llega como #informe=AAAA-MM-DD.
+  nombre = nombre.split("=")[0];
   if (!PESTANAS.includes(nombre)) nombre = "ahora";
   for (const otra of PESTANAS) {
     const pestana = $(`pestana-${otra}`);

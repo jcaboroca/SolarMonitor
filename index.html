@@ -74,6 +74,9 @@
         <button role="tab" type="button" id="pestana-dia" data-panel="dia" aria-controls="panel-dia" aria-selected="false" tabindex="-1">
           <span class="num" aria-hidden="true">05</span><span class="icono" aria-hidden="true"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-dia"></use></svg></span><span class="rotulo">Día a día</span>
         </button>
+        <button role="tab" type="button" id="pestana-informe" data-panel="informe" aria-controls="panel-informe" aria-selected="false" tabindex="-1">
+          <span class="num" aria-hidden="true">06</span><span class="icono" aria-hidden="true"><svg class="i" aria-hidden="true" focusable="false"><use href="#i-documento"></use></svg></span><span class="rotulo">Informe</span>
+        </button>
       </div>
     </nav>
     <p class="frescura" id="frescura"></p>
@@ -516,6 +519,74 @@
       <div class="lienzo medio"><canvas id="vertidoDiario"></canvas></div>
     </section>
 
+  </div>
+
+  <!-- 5 · Informe diario -->
+  <div class="panel" id="panel-informe" role="tabpanel" aria-labelledby="pestana-informe" tabindex="0" hidden>
+    <section class="informe">
+      <h2>Informe diario</h2>
+      <p class="ayuda">Cada día a las 08:30 (hora de Madrid) el servidor resume ayer con los datos de SolarMAN que guarda y prepara una recomendación para hoy. Son estimaciones de SolarMAN, no el contador oficial ni Datadis (el Excel de Datadis se sigue cargando a mano en Datos). El objetivo es pagar menos por lo mismo, no consumir menos a toda costa.</p>
+      <nav class="informe-indice" id="informeIndice" aria-label="Informes guardados"></nav>
+      <article class="informe-vista" id="informeVista" aria-live="polite" tabindex="-1"><p class="ayuda">Abre esta pestaña para cargar el último informe.</p></article>
+    </section>
+
+    <section class="informe" id="informeAjustes" hidden>
+      <h2>Configurar el informe</h2>
+      <p class="aviso">Al guardar, el servidor (el mismo Worker de la nube) almacena solo esta configuración mínima: ubicación aproximada, tarifa con su vigencia y fuente, y tu suscripción de notificaciones. Los informes generados se guardan allí. No se guardan contraseñas de Datadis, facturas ni la clave maestra; el histórico cifrado no se toca.</p>
+      <div class="campos">
+        <label class="check"><input type="checkbox" id="informeConsentimiento"> Acepto guardar esta configuración mínima en el servidor</label>
+        <label class="check"><input type="checkbox" id="informeActivo"> Generar el informe diario</label>
+        <label class="check"><input type="checkbox" id="informePushActivo"> Avisarme con una notificación</label>
+      </div>
+      <fieldset class="campos campos-fila">
+        <legend>Ubicación aproximada (para la previsión del tiempo; se redondea a 2 decimales)</legend>
+        <label>Latitud <input type="text" inputmode="decimal" id="informeLat" autocomplete="off"></label>
+        <label>Longitud <input type="text" inputmode="decimal" id="informeLon" autocomplete="off"></label>
+        <button class="btn" type="button" id="informeUsarUbicacion">Usar mi ubicación</button>
+      </fieldset>
+      <fieldset class="campos campos-fila">
+        <legend>Tarifa vigente (sin ella no se calculan euros)</legend>
+        <label>Tipo
+          <select id="informeTipo">
+            <option value="">Sin tarifa (no se calculan euros)</option>
+            <option value="plana">Precio único</option>
+            <option value="periodos">Por periodos P1/P2/P3</option>
+            <option value="indexada">Indexada (precio horario)</option>
+          </select>
+        </label>
+        <div class="campos campos-fila" id="informeCampoTarifa" hidden>
+          <label>Vale desde <input type="date" id="informeDesde"></label>
+          <label>Hasta (vacío = sin fin) <input type="date" id="informeHasta"></label>
+          <label>Fuente del precio <input type="text" id="informeFuente" maxlength="120" placeholder="p. ej. factura de octubre"></label>
+        </div>
+        <div class="campos campos-fila" id="informeCampoPlana" hidden>
+          <label>Precio de la energía (€/kWh, sin impuestos) <input type="text" inputmode="decimal" id="informePrecio"></label>
+        </div>
+        <div class="campos campos-fila" id="informeCampoIndexada" hidden>
+          <label class="check"><input type="checkbox" id="informeAcepta"> Acepto una estimación con medias históricas (no son los precios reales de cada hora)</label>
+        </div>
+        <div class="campos campos-fila" id="informeCampoPeriodos" hidden>
+          <label>P1 (€/kWh) <input type="text" inputmode="decimal" id="informeP1"></label>
+          <label>P2 (€/kWh) <input type="text" inputmode="decimal" id="informeP2"></label>
+          <label>P3 (€/kWh) <input type="text" inputmode="decimal" id="informeP3"></label>
+        </div>
+      </fieldset>
+      <div class="acciones">
+        <button class="btn primario" type="button" id="informeGuardar">Guardar configuración</button>
+        <button class="btn" type="button" id="informeGenerar">Generar ahora el de ayer</button>
+      </div>
+      <p class="estado" id="informeEstadoAjustes" role="status"></p>
+
+      <h3>Notificaciones en este dispositivo</h3>
+      <p class="ayuda">iPhone: hace falta iOS 16.4 o posterior. Abre esta web en Safari, pulsa Compartir › «Añadir a pantalla de inicio», abre Solar Monitor desde ese icono y pulsa Activar. La notificación es genérica («Tu informe solar está disponible») y no lleva cifras. La entrega depende del dispositivo y de la red y puede retrasarse: no está garantizada al minuto.</p>
+      <p id="informeCapacidad" role="status"></p>
+      <div class="acciones">
+        <button class="btn primario" type="button" id="informeActivarPush">Activar notificaciones</button>
+        <button class="btn" type="button" id="informeProbarPush">Enviar una prueba</button>
+        <button class="btn" type="button" id="informeQuitarPush">Desactivar en este dispositivo</button>
+      </div>
+      <p class="estado" id="informeEstadoPush" role="status"></p>
+    </section>
   </div>
 
 </main>
