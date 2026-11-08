@@ -1,7 +1,7 @@
 // Los ficheros del programa se piden a la red primero para que una versión nueva
 // entre sin trucos; las librerías de vendor van desde memoria porque no cambian.
 
-const CACHE = "solar-monitor-v45";
+const CACHE = "solar-monitor-v46";
 const BASE = [
   "./",
   "./index.html",
@@ -11,6 +11,7 @@ const BASE = [
   "./js/flujos.js",
   "./js/pdf-worker.js",
   "./js/ahora.js",
+  "./js/informe.js",
   "./js/asesor/tarifa.js",
   "./js/asesor/habitos.js",
   "./js/asesor/prevision.js",
@@ -81,5 +82,44 @@ self.addEventListener("fetch", (evento) => {
         return respuesta;
       })
       .catch(() => caches.match(peticion).then((guardada) => guardada || caches.match("./index.html")))
+  );
+});
+
+// Notificaciones push del informe diario. El contenido es siempre generico y solo se usa la
+// fecha del payload (validada); nunca se abre una URL que venga en el mensaje.
+const FECHA = /^\d{4}-\d{2}-\d{2}$/;
+
+self.addEventListener("push", (evento) => {
+  let datos = null;
+  try {
+    datos = evento.data ? evento.data.json() : null;
+  } catch {
+    datos = null;
+  }
+  const fecha = datos && datos.tipo === "informe" && typeof datos.fecha === "string" && FECHA.test(datos.fecha) ? datos.fecha : null;
+  const prueba = datos && datos.tipo === "prueba";
+  // iOS exige mostrar siempre una notificacion: si el mensaje no es valido, se muestra la generica.
+  evento.waitUntil(
+    self.registration.showNotification("Solar Monitor", {
+      body: prueba ? "Notificación de prueba" : "Tu informe solar está disponible",
+      tag: fecha ? `informe-${fecha}` : prueba ? "prueba" : "informe",
+      data: fecha ? { fecha } : {},
+      icon: "./assets/icono-180.png",
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (evento) => {
+  evento.notification.close();
+  const fecha = evento.notification.data && typeof evento.notification.data.fecha === "string" && FECHA.test(evento.notification.data.fecha) ? evento.notification.data.fecha : null;
+  const ambito = self.registration.scope;
+  const destino = fecha ? `${ambito}#informe=${fecha}` : ambito;
+  evento.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((abiertas) => {
+      const propia = abiertas.find((c) => c.url.startsWith(ambito));
+      if (!propia) return self.clients.openWindow(destino);
+      if (fecha) propia.postMessage({ tipo: "abrir-informe", fecha });
+      return propia.focus();
+    })
   );
 });

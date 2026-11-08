@@ -197,7 +197,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 
 /* --- Controles ------------------------------------------------------------------ */
 
-select, input[type="text"], input[type="number"], input[type="password"], input[type="url"], input[type="month"] {
+select, input[type="text"], input[type="number"], input[type="password"], input[type="url"], input[type="month"], input[type="date"] {
   background: var(--pozo); color: var(--texto); border: 1px solid var(--escala);
   border-radius: var(--r-2); padding: 6px var(--e-2); font: inherit; font-size: 0.875rem; min-width: 0;
 }
@@ -1057,3 +1057,24 @@ main.contenedor:has(> #panel-dia:not([hidden])) { max-width: 1320px; }
     .relato[data-vista="relato"] .paso-cuerpo { animation: paso-entra linear both; animation-timeline: view(); animation-range: entry 0% entry 40%; }
   }
 }
+
+/* --- Informe diario ------------------------------------------------------------- */
+
+.informe { display: flex; flex-direction: column; gap: var(--e-3); margin-bottom: var(--e-5); }
+.informe fieldset { border: 1px solid var(--linea); border-radius: var(--r-2); padding: var(--e-3); min-inline-size: 0; }
+.informe legend { font-size: 0.8125rem; color: var(--texto-2); padding: 0 var(--e-1); }
+.informe-indice { display: flex; flex-wrap: wrap; gap: var(--e-2); }
+.informe-indice .chip[aria-current] { color: var(--texto); border-color: var(--sol); background: color-mix(in srgb, var(--sol) 8%, transparent); }
+.informe-indice .chip:focus-visible, .informe-vista:focus-visible { outline: 2px solid var(--sol); outline-offset: 2px; }
+.informe-vista { background: var(--superficie); border: 1px solid var(--linea); border-radius: var(--r-2); padding: var(--e-3); overflow-wrap: anywhere; }
+.informe-bloque { margin-top: var(--e-3); }
+.informe-aviso { border-left: 3px solid var(--sol); padding-left: var(--e-2); }
+.informe-cobertura { display: flex; flex-wrap: wrap; gap: var(--e-2) var(--e-4); list-style: none; padding: 0; margin: 0; font-family: var(--mono); font-size: 0.8125rem; }
+.insignia { display: inline-block; font-family: var(--mono); font-size: 0.75rem; border: 1px solid var(--escala); border-radius: var(--r-1); padding: 1px 6px; color: var(--texto-2); }
+.insignia-ok::before { content: "✔ "; }
+.insignia-parcial::before { content: "◐ "; }
+.insignia-fallo::before { content: "✖ "; }
+.insignia-ok { color: var(--bien); border-color: var(--bien); }
+.insignia-parcial { color: var(--sol); border-color: var(--sol); }
+.insignia-fallo { color: var(--evita); border-color: var(--evita); }
+@media (max-width: 620px) { .informe-indice .chip { flex: 1 1 100%; justify-content: flex-start; } }
