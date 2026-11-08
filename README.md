@@ -243,6 +243,24 @@ promesas dentro de la misma invocación. Hay que medir la CPU real de cada fase,
 también en frío: que una petición termine bien no demuestra que tenga margen.
 No se ha contratado un plan de pago.
 
+Validación real del flujo por fases, 8 de noviembre de 2026:
+
+| Operación | CPU observada (ms) |
+| --- | ---: |
+| Preparar fuente | 5,604 |
+| Preparar previsión | 4,502 |
+| Preparar calibración | 7,132 |
+| Componer informe | 7,141 |
+| Avisos, con la entrega ya completada | 4,776 |
+| Cron sin trabajo pendiente, máximo observado | 3,501 |
+
+Son métricas de Cloudflare, no tiempos de respuesta HTTP; las invocaciones
+observadas no registraron errores. La calibración seguía sin datos suficientes:
+estas muestras no certifican su carga completa ni la del refresco histórico.
+Falta observar los turnos programados de archivo y migración por separado.
+La prueba del cliente nuevo comprobó también que no se repite un aviso ya enviado
+y que no se altera el histórico cifrado.
+
 La fuente preparada contiene el día integrado, los resúmenes y la cobertura
 pendiente. La composición no vuelve a leer curvas ni a consultar meteorología.
 Las fechas ISO se ordenan sin inicializar comparación regional. La calibración
@@ -263,9 +281,12 @@ unos 5 días con datos suficientes, que pueden proceder de la migración local;
 la comparación con el mes anterior solo usa días con `diarios`, descargados o
 migrados con esta versión.
 
-### Prueba manual pendiente
+### Validación en iPhone
 
-La recepción real en iPhone no está verificada: requiere desplegar tras la
-revisión y probarlo con el dispositivo del usuario.
+El usuario confirmó la recepción de la notificación de prueba el 8 de noviembre
+de 2026. El servidor registró además el envío del aviso diario; esa aceptación
+por el servicio push no demuestra por sí sola su visualización en el teléfono.
+Los avisos están activados y el planificador usa las 08:30 de Madrid.
+Queda observar la siguiente entrega automática de esa hora con el flujo por fases.
 
 Pruebas: `node --test --test-concurrency=1 'test/*.test.js'`.
