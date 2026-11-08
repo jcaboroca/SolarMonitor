@@ -22,6 +22,10 @@ const SOC_BORDE = 1800; // una lectura a menos de 30 min del limite del dia vale
 
 const redondear = (x, d = 4) => Math.round(x * 10 ** d) / 10 ** d;
 const valido = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0;
+/** El nivel de bateria indicado solo vale entre 0 y 100; un cero real es una medida valida. */
+export const socValido = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 100;
+/** Valor valido de la columna `i` de la curva compacta (1..6 potencias, 7 nivel de bateria). */
+export const valorValido = (i, v) => (i === 7 ? socValido(v) : valido(v));
 const dosDigitos = (n) => String(n).padStart(2, "0");
 const hhmm = (ms) => {
   const p = partesMadrid(ms);
@@ -33,8 +37,11 @@ const mediana = (xs) => {
   return o.length % 2 ? o[m] : (o[m - 1] + o[m]) / 2;
 };
 
-/** Integra el dia local `fecha` sin duplicar, recortando al dia y limitando huecos. */
-export function integrarDia(puntos, fecha) {
+/**
+ * Reglas unicas de intervalos para el dia y para las horas: sin duplicar instantes, recortando al dia,
+ * un hueco grande solo cuenta un paso normal y solo suma tiempo con valor valido en cada senal.
+ */
+function intervalos(puntos, fecha) {
   const { inicio, fin, horas } = limitesDia(fecha);
   const ini = inicio / 1000;
   const final = fin / 1000;
@@ -75,7 +82,12 @@ export function integrarDia(puntos, fecha) {
       a = corte;
     }
   });
+  return { inicio, ini, final, horas, ordenados, total, horario, muestras, ultimo };
+}
 
+/** Integra el dia local `fecha` sin duplicar, recortando al dia y limitando huecos. */
+export function integrarDia(puntos, fecha) {
+  const { inicio, ini, final, horas, ordenados, total, horario, muestras, ultimo } = intervalos(puntos, fecha);
   const cobertura = {};
   const energia = {};
   SENALES.forEach((s, j) => {
@@ -83,7 +95,7 @@ export function integrarDia(puntos, fecha) {
     energia[s] = total[j].seg ? redondear(total[j].ws / 3.6e6) : null;
   });
 
-  const socs = ordenados.filter((p) => p[0] >= ini && typeof p[7] === "number" && Number.isFinite(p[7]) && p[7] >= 0 && p[7] <= 100);
+  const socs = ordenados.filter((p) => p[0] >= ini && socValido(p[7]));
   const socPorHora = new Map();
   for (const p of socs) socPorHora.set(Math.floor((p[0] - ini) / 3600), p[7]);
   const soc = socs.length
@@ -125,6 +137,24 @@ export function integrarDia(puntos, fecha) {
   return { fecha, horasEsperadas: horas, muestras, ultimoDato: ultimo === null ? null : new Date(ultimo * 1000).toISOString(), cobertura, energia, soc, saltosSoc, porHora };
 }
 
+/**
+ * Filas horarias para el archivo con las mismas reglas que el dia: [hora desde 1970, casa Wh, solar Wh,
+ * SoC al final, minutos de casa medidos, minutos de solar medidos]. Un dato ausente no suma ni cuenta tiempo.
+ */
+export function horasDeDia(puntos, fecha) {
+  const { inicio, ini, ordenados, horario, horas } = intervalos(puntos, fecha);
+  const socPorHora = new Map();
+  for (const p of ordenados) if (p[0] >= ini && socValido(p[7])) socPorHora.set(Math.floor((p[0] - ini) / 3600), p[7]);
+  const filas = [];
+  for (let k = 0; k < horas; k++) {
+    const h = horario[k];
+    const soc = socPorHora.get(k) ?? null;
+    if (!h.seg.some((x) => x > 0) && soc === null) continue;
+    filas.push([(inicio + k * 3600000) / 3600000, Math.round(h.ws[1] / 3600), Math.round(h.ws[0] / 3600), soc, Math.round(h.seg[1] / 60), Math.round(h.seg[0] / 60)]);
+  }
+  return filas;
+}
+
 /** Totales diarios compactos para comparar dias y meses sin volver a integrar. */
 export function resumirDia(integrado) {
   const r = { cob: {} };
@@ -152,11 +182,27 @@ function huella(texto) {
 }
 /** Version del contenido integrado de un dia: cambia con cualquier valor, cobertura o muestra distintos. */
 export const versionIntegrado = (integrado) => huella(JSON.stringify(integrado));
-/** Version de los agregados de los dias anteriores de que dependen comparacion y acumulado mensual. */
-export function versionAgregados(diarios, fecha) {
-  const minimo = sumarDias(fecha, -62);
-  const claves = Object.keys(diarios || {}).filter((d) => d >= minimo && d < fecha).sort();
-  return huella(JSON.stringify(claves.map((d) => [d, diarios[d]])));
+/** Dias anteriores que pueden entrar en la comparacion o en el acumulado de `fecha` (superconjunto, sin mirar si estan completos). */
+export function esDependencia(dia, fecha) {
+  if (!(dia < fecha)) return false;
+  const mes = fecha.slice(0, 7);
+  const anterior = sumarDias(`${mes}-01`, -1).slice(0, 7);
+  if (dia.slice(0, 7) === mes) return true;
+  if (dia.slice(0, 7) === anterior) return Number(dia.slice(8)) <= Number(fecha.slice(8));
+  return dia >= sumarDias(fecha, -28) && tipoDia(dia) === tipoDia(fecha);
+}
+
+/** Version de lo que de verdad usa el informe de `fecha`: los dias completos del mes, del mes anterior y de la comparacion, con sus totales. */
+export function versionDependencias(diarios, fecha) {
+  const mes = fecha.slice(0, 7);
+  const anterior = sumarDias(`${mes}-01`, -1).slice(0, 7);
+  const n = Number(fecha.slice(8));
+  const delPeriodo = (d) => d < fecha && (d.startsWith(mes) || (d.startsWith(anterior) && Number(d.slice(8)) <= n));
+  const usados = new Set(Object.keys(diarios || {}).filter((d) => delPeriodo(d) && completo(diarios[d])));
+  const comp = compararDias({ fecha, actual: { solar: 0, casa: 0, compra: 0, cob: { solar: 1, casa: 1, compra: 1 } }, diarios });
+  for (const d of comp?.dias || []) usados.add(d);
+  const claves = [...usados].sort();
+  return huella(JSON.stringify(claves.map((d) => [d, diarios[d].solar, diarios[d].casa, diarios[d].compra])));
 }
 
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
@@ -291,7 +337,7 @@ const euros = (x) => x.toFixed(2).replace(".", ",");
 export function construirInforme({ puntos, fecha, ahora, config = {}, diarios = {}, integrado: previo = null, pendientesMigracion = 0 }) {
   const integrado = previo || integrarDia(puntos, fecha);
   const fuente = { nombre: "SolarMAN (archivo del servidor)", datadis: false, nota: "Datos de SolarMAN guardados en el servidor. No usa Datadis ni facturas: son estimaciones, no el contador oficial.", ultimoDato: integrado.ultimoDato };
-  const base = { version: 1, fecha, tipoDia: tipoDia(fecha), generado: new Date(ahora).toISOString(), fuente, horasEsperadas: integrado.horasEsperadas, cobertura: Object.fromEntries(Object.entries(integrado.cobertura).map(([k, v]) => [k, redondear(v, 4)])), version: { f: versionIntegrado(integrado), a: versionAgregados(diarios, fecha) } };
+  const base = { version: 1, fecha, tipoDia: tipoDia(fecha), generado: new Date(ahora).toISOString(), fuente, horasEsperadas: integrado.horasEsperadas, cobertura: Object.fromEntries(Object.entries(integrado.cobertura).map(([k, v]) => [k, redondear(v, 4)])), huella: { f: versionIntegrado(integrado), a: versionDependencias(diarios, fecha), p: pendientesMigracion > 0 ? 1 : 0 } };
   const necesarias = ["solar", "casa", "compra"].map((s) => integrado.cobertura[s]);
 
   if (!integrado.muestras || Math.max(...necesarias) < 0.25) {

@@ -399,8 +399,9 @@ async function escenarioHeredado() {
   return { kv: kvFalso(inicial), ahora, ayer };
 }
 
-const sinDescargas = async () => assert.fail("la migracion no debe descargar nada");
-const correr = (kv, ahora) => archivar({ HISTORICO: kv, SOLARMAN_PLANTA: "1" }, { pedir: sinDescargas, ahora, maximo: 2 });
+// Solo ayer (20) entra en las revisitas horarias; migrar los demas dias heredados no descarga nada.
+const soloAyer = async (url) => (url.includes("month=11&day=20") ? json(registros(dia("2026-11-20"))) : assert.fail("la migracion no debe descargar nada"));
+const correr = (kv, ahora) => archivar({ HISTORICO: kv, SOLARMAN_PLANTA: "1" }, { pedir: soloAyer, ahora, maximo: 2 });
 
 test("R8: los dias heredados de hace mas de 7 dias se migran por lotes acotados y de forma idempotente", async () => {
   const { kv, ahora, ayer } = await escenarioHeredado();
@@ -410,14 +411,15 @@ test("R8: los dias heredados de hace mas de 7 dias se migran por lotes acotados 
   assert.ok(migrados.length > 0 && migrados.length <= LOTE_MIGRACION);
   assert.ok(migrados.includes("2026-11-20"), "primero lo mas reciente");
   let vueltas = 1;
-  while ((await correr(kv, ahora)).resultado === "migrado") assert.ok(++vueltas < 80);
+  while ((await correr(kv, ahora)).migrados.length) assert.ok(++vueltas < 80);
   const diarios = kv.leer(RESUMEN).diarios;
   assert.ok(vueltas >= 2 && vueltas <= Math.ceil(62 / LOTE_MIGRACION) + 1, String(vueltas));
   for (let d = 1; d <= 20; d++) assert.equal(diaCompleto(diarios[`2026-11-${String(d).padStart(2, "0")}`]), true);
   assert.equal(diarios["2026-11-05"].compra, 24);
   const escrituras = kv.escrituras.length;
   const final = await correr(kv, ahora);
-  assert.equal(final.resultado, "al dia");
+  assert.equal(final.resultado, "archivado"); // solo la revisita de ayer, sin cambios
+  assert.deepEqual(final.migrados, []);
   assert.equal(kv.escrituras.length, escrituras);
 });
 
@@ -429,7 +431,7 @@ test("R8: durante la migracion el informe lo dice y al terminar se actualiza con
   assert.ok(parcial.mes.pendientesMigracion > 0);
   assert.match(parcial.mes.aviso, /incorporando|migra/i);
   let vueltas = 0;
-  while ((await correr(kv, ahora)).resultado === "migrado") assert.ok(++vueltas < 80);
+  while ((await correr(kv, ahora)).migrados.length) assert.ok(++vueltas < 80);
   const r = await programado({ HISTORICO: kv }, { ahora: ahora + 3600000, pedir: noMeteo });
   assert.equal(r.resultado, "generado");
   const fin = kv.leer(`informe-${ayer}`);
@@ -449,9 +451,9 @@ test("R8: un dia archivado cuya curva falta no bloquea la migracion", async () =
   // Sin curva el dia no se puede medir: la migracion no se atasca y el dia queda incompleto,
   // con la revisita acotada por intentos (el portal aqui no devuelve nada).
   let descargas = 0;
-  const vacio = async () => (descargas++, json({ records: [] }));
+  const vacio = async (url) => (url.includes("day=19") && descargas++, json(url.includes("day=20") ? registros(dia("2026-11-20")) : { records: [] }));
   let vueltas = 0;
-  while (["migrado", "archivado"].includes((await archivar({ HISTORICO: kv, SOLARMAN_PLANTA: "1" }, { pedir: vacio, ahora, maximo: 2 })).resultado)) assert.ok(++vueltas < 80);
+  while ((await archivar({ HISTORICO: kv, SOLARMAN_PLANTA: "1" }, { pedir: vacio, ahora, maximo: 2 })).migrados.length) assert.ok(++vueltas < 80);
   assert.equal(diaCompleto(kv.leer(RESUMEN).diarios["2026-11-19"]), false);
   assert.ok(descargas <= MAX_INTENTOS, String(descargas));
 });

@@ -1,7 +1,7 @@
 // Informe diario: generacion a las 08:30 de Madrid, persistencia, envio de push y API.
 // Todo en KV (el mismo HISTORICO). Nada de aqui toca el paquete cifrado del historico.
 
-import { claveMes, RESUMEN, AYER_INTEGRADO, MARCA_VERSION, pendientesMigracion } from "./archivo.js";
+import { claveMes, RESUMEN, AYER_INTEGRADO, MARCA_VERSION, pendientesRelevantes } from "./archivo.js";
 import { integrarDia, construirInforme, evaluarTarifa } from "./informe-calculo.js";
 import { construirHoy } from "./informe-hoy.js";
 import { diaMadrid, partesMadrid, sumarDias } from "./horario.js";
@@ -11,6 +11,10 @@ export const MAX_GENERACIONES = 4;
 // Regeneraciones extra, solo si cambia el contenido aceptado de SolarMAN (o los agregados) despues de generar.
 export const MAX_REGENERACIONES = 4;
 export const MAX_ENTREGAS = 3;
+// Informes fechados anteriores a ayer que se refrescan al terminar la migracion: solo los de la ultima semana
+// (los resumenes diarios de mas atras ya se han recortado) y con un maximo de refrescos por informe.
+export const MAX_REFRESCOS = 3;
+const DIAS_REFRESCO = 6;
 const HORA_INFORME = 8 * 60 + 30;
 const MAX_INFORMES = 60;
 const MAX_DISPOSITIVOS = 5;
@@ -106,7 +110,7 @@ export async function generarInforme(entorno, { ahora = Date.now(), pedir = (u, 
     const cfg = { ...CONFIG_BASE, ...(config || {}) };
     const resumen = await kv.get(RESUMEN, "json");
     const { diarios, integrado } = await leerFuente(kv, resumen, fecha);
-    informe = construirInforme({ integrado, fecha, ahora, config: cfg, diarios, pendientesMigracion: pendientesMigracion(resumen, fecha).length });
+    informe = construirInforme({ integrado, fecha, ahora, config: cfg, diarios, pendientesMigracion: pendientesRelevantes(resumen, fecha).length });
     if (informe.estado !== "sin_datos") informe.hoy = await construirHoy({ config: cfg, informe, resumen, ahora, pedir });
     else informe.hoy = { fecha: diaMadrid(ahora), estado: "no_disponible", texto: "Sin datos de ayer no se prepara la recomendación de hoy.", recomendaciones: [] };
   } catch {
@@ -115,7 +119,7 @@ export async function generarInforme(entorno, { ahora = Date.now(), pedir = (u, 
   const final = informe.estado === "ok" || informe.estado === "parcial";
   // Regenerar no borra la entrega: el estado de envio de esa fecha se conserva para no duplicar avisos.
   const push = final ? (previa?.push && previa.push.estado !== "no_aplica" ? previa.push : { estado: "pendiente", pendientes: 1 }) : { estado: "no_aplica", pendientes: 0 };
-  const entrada = { fecha, estado: informe.estado, generado: informe.generado, intentos, version: informe.version ?? null, push };
+  const entrada = { fecha, estado: informe.estado, generado: informe.generado, intentos, huella: informe.huella ?? null, push };
   await kv.put(claveInforme(fecha), JSON.stringify(informe));
   await guardarIndice(kv, indice, entrada);
   return { informe, entrada };
@@ -157,6 +161,43 @@ async function enviarPendientes(entorno, kv, config, entrada, { ahora, pedir }) 
   return { estado: pendientes ? "pendiente" : enviados ? "enviado" : "fallido", pendientes, enviados };
 }
 
+const huellaDe = (e) => e?.huella ?? (e?.version && typeof e.version === "object" ? e.version : null);
+
+/**
+ * Un informe fechado anterior a ayer generado mientras se migraban dias que entran en sus acumulados queda
+ * marcado (`huella.p`). Al terminar la migracion se rehace, de uno en uno, para su fecha original; conserva la
+ * recomendacion de hoy original (con una nota) y el estado de entrega, y no envia nada.
+ */
+async function refrescarAnterior(kv, indice, { fecha: ayer, ahora }) {
+  const minimo = sumarDias(ayer, -DIAS_REFRESCO);
+  const candidata = (indice?.informes || [])
+    .filter((e) => e.fecha < ayer && e.fecha >= minimo && (e.estado === "ok" || e.estado === "parcial") && huellaDe(e)?.p && (e.refrescos || 0) < MAX_REFRESCOS)
+    .sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
+  if (!candidata) return null;
+  const marca = await kv.get(MARCA_VERSION, "json");
+  if (marca?.dia !== ayer || marca.m > 0) return null;
+  const bloqueo = await kv.get("informe-lock", "json");
+  if (bloqueo?.hasta > ahora) return null;
+  await kv.put("informe-lock", JSON.stringify({ hasta: ahora + LOCK_MS }));
+  try {
+    const fecha = candidata.fecha;
+    const [previo, config, resumen] = await Promise.all([kv.get(claveInforme(fecha), "json"), kv.get("informe-config", "json"), kv.get(RESUMEN, "json")]);
+    if (!previo || (previo.estado !== "ok" && previo.estado !== "parcial")) return null;
+    const { diarios, integrado } = await leerFuente(kv, resumen, fecha);
+    const informe = construirInforme({ integrado, fecha, ahora, config: { ...CONFIG_BASE, ...(config || {}) }, diarios, pendientesMigracion: pendientesRelevantes(resumen, fecha, ayer).length });
+    informe.generado = previo.generado;
+    informe.actualizado = new Date(ahora).toISOString();
+    informe.hoy = previo.hoy ? { ...previo.hoy, nota: `Recomendación elaborada el ${previo.generado.slice(0, 10)}; no se ha recalculado al actualizar este informe.` } : null;
+    informe.conclusiones.push({ tipo: "aviso", texto: "Informe actualizado después de incorporar días archivados antes: el acumulado del mes y la comparación pueden diferir de la primera versión. La recomendación de hoy es la original de ese día." });
+    await kv.put(claveInforme(fecha), JSON.stringify(informe));
+    const actual = (await kv.get("informe-indice", "json")) || indice;
+    await guardarIndice(kv, actual, { ...candidata, huella: informe.huella, refrescos: (candidata.refrescos || 0) + 1 });
+    return { resultado: "refrescado", fecha, estado: informe.estado };
+  } finally {
+    await kv.delete("informe-lock");
+  }
+}
+
 /** Punto de entrada de los crons: respeta las 08:30 de Madrid y repite lo pendiente. */
 export async function programado(entorno, { ahora = Date.now(), pedir = (u, i) => fetch(u, i) } = {}) {
   const kv = entorno.HISTORICO;
@@ -168,19 +209,20 @@ export async function programado(entorno, { ahora = Date.now(), pedir = (u, i) =
   const indice = await kv.get("informe-indice", "json");
   const previa = indice?.informes?.find((e) => e.fecha === fecha);
   const final = previa && (previa.estado === "ok" || previa.estado === "parcial");
+  const huella = huellaDe(previa);
   // El archivo publica una version pequena del contenido aceptado de ayer y de los agregados de los
   // dias anteriores. Si no coincide con la del informe (parcial o completo), la fuente cambio.
   let cambio = false;
   if (final) {
     const marca = await kv.get(MARCA_VERSION, "json");
     if (marca?.dia === fecha) {
-      const v = previa.version;
-      // Con migracion en curso los agregados aun cambiaran: se espera a que termine para no gastar regeneraciones.
-      cambio = !v || (marca.f && v.f !== marca.f) || (v.a !== marca.a && !(marca.m > 0));
+      // Con migracion en curso (de dias que entran en este informe) los agregados aun cambiaran: se espera a que
+      // termine para no gastar regeneraciones. El historial ajeno al informe ni cambia la huella ni cuenta.
+      cambio = !huella || (marca.f && huella.f !== marca.f) || (!(marca.m > 0) && (huella.a !== marca.a || !!huella.p));
     }
   }
   const regenerar = cambio && previa.intentos < MAX_GENERACIONES + MAX_REGENERACIONES;
-  if (final && !previa.push?.pendientes && !regenerar) return { resultado: "completo" };
+  if (final && !previa.push?.pendientes && !regenerar) return (await refrescarAnterior(kv, indice, { fecha, ahora })) ?? { resultado: "completo" };
   if (previa && !final && previa.intentos >= MAX_GENERACIONES && !regenerar) return { resultado: "agotado" };
 
   const bloqueo = await kv.get("informe-lock", "json");

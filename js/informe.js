@@ -106,7 +106,7 @@ export function htmlInforme(i) {
 <header class="informe-cabecera">
   <h3>Informe del ${escapar(fechaLarga(i.fecha) || i.fecha)}</h3>
   <p><span class="insignia insignia-${clase}">${rotulo}</span> <span class="insignia">${escapar(i.fuente?.nombre ?? "Fuente desconocida")}</span>${i.fuente?.datadis ? "" : ' <span class="insignia">Sin Datadis</span>'}</p>
-  <p class="ayuda">Generado el ${escapar(i.generado ? new Date(i.generado).toLocaleString("es-ES") : "—")}${i.horasEsperadas ? ` · día de ${i.horasEsperadas} h` : ""}. ${escapar(i.fuente?.nota ?? "")}</p>
+  <p class="ayuda">Generado el ${escapar(i.generado ? new Date(i.generado).toLocaleString("es-ES") : "—")}${i.actualizado ? ` · actualizado el ${escapar(new Date(i.actualizado).toLocaleString("es-ES"))}` : ""}${i.horasEsperadas ? ` · día de ${i.horasEsperadas} h` : ""}. ${escapar(i.fuente?.nota ?? "")}</p>
 </header>
 <section class="informe-bloque"><h4>Lo que pasó ayer</h4>
   ${(i.conclusiones || []).map((c) => `<p class="informe-${escapar(c.tipo)}">${escapar(c.texto)}</p>`).join("")}
@@ -116,7 +116,7 @@ ${htmlComparacion(i.comparacion)}
 ${htmlMes(i.mes)}
 <section class="informe-bloque"><h4>Cobertura de datos</h4><ul class="informe-cobertura">${cobertura}</ul></section>
 <section class="informe-bloque"><h4>Hoy</h4>
-  ${hoy ? `<p>${escapar(hoy.texto ?? "")}</p>${lista(hoy.recomendaciones?.slice(1) ?? [])}` : "<p>Sin recomendación para hoy.</p>"}
+  ${hoy ? `<p>${escapar(hoy.texto ?? "")}</p>${hoy.nota ? `<p class="ayuda">${escapar(hoy.nota)}</p>` : ""}${lista(hoy.recomendaciones?.slice(1) ?? [])}` : "<p>Sin recomendación para hoy.</p>"}
 </section>`;
 }
 
