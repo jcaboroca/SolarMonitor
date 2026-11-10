@@ -4,6 +4,7 @@ import { RESUMEN } from "./archivo.js";
 import { prepararPrevision, prepararCalibracion } from "./informe-hoy.js";
 import { prepararFuente, generarInforme, programado, cambioInforme, refrescarAnterior, MAX_GENERACIONES, MAX_REGENERACIONES } from "./informe.js";
 import { leerTrabajo, TRABAJO, INTENTO } from "./informe-estado.js";
+import { prepararPrecios } from "./informe-precios.js";
 
 const LOCK = "informe-fases-lock";
 const PREPARAR_DESDE = 8 * 60 + 25;
@@ -58,7 +59,9 @@ export async function avanzarInforme(entorno, { ahora = Date.now(), pedir = (u, 
     const corregido = terminado(previa) && previa.intentos < MAX_GENERACIONES + MAX_REGENERACIONES && await cambioInforme(kv, previa, fecha);
     const reintentar = !terminado(previa) && (previa?.intentos || 0) < MAX_GENERACIONES
       && ahora - Date.parse(trabajo.actualizado) >= HORA;
-    if (corregido || reintentar) trabajo = nuevoTrabajo(config, ahora, false);
+    const reintentarPrecios = config?.tarifa?.mercado && previa?.preciosEstado !== "disponible"
+      && (previa?.intentos || 0) < MAX_GENERACIONES + MAX_REGENERACIONES && ahora - Date.parse(trabajo.actualizado) >= HORA;
+    if (corregido || reintentar || reintentarPrecios) trabajo = nuevoTrabajo(config, ahora, false);
     else {
       if (previa?.push?.pendientes && minutos >= AVISAR_DESDE) trabajo = { ...trabajo, fase: "aviso" };
       else {
@@ -90,10 +93,14 @@ export async function avanzarInforme(entorno, { ahora = Date.now(), pedir = (u, 
     } else if (fase === "calibracion") {
       const resumen = await kv.get(RESUMEN, "json");
       valor = await prepararCalibracion({ config: config || {}, resumen, ahora, pedir });
+      siguiente = config?.tarifa?.mercado ? "precios" : "informe";
+    } else if (fase === "precios") {
+      valor = await prepararPrecios({ config, ahora, pedir });
       siguiente = "informe";
     } else if (fase === "informe") {
       const [fuente, prevision, calibracion] = await Promise.all(["fuente", "prevision", "calibracion"].map((f) => preparado(kv, trabajo, f)));
-      const r = await generarInforme(entorno, { ahora, preparacion: { fuente, prevision, calibracion } });
+      const precios = config?.tarifa?.mercado ? await preparado(kv, trabajo, "precios") : null;
+      const r = await generarInforme(entorno, { ahora, preparacion: { fuente, prevision, calibracion, precios } });
       if (r.informe.estado === "error") throw new Error("No se pudo componer el informe.");
       siguiente = "aviso";
     } else if (fase === "aviso") {
@@ -108,8 +115,8 @@ export async function avanzarInforme(entorno, { ahora = Date.now(), pedir = (u, 
       await kv.put(clave(fase), JSON.stringify({ trabajo: trabajo.id, valor }));
       // Tras tres fallos meteorologicos se conserva su estado explicito y se publica
       // el informe energetico sin inventar una prevision.
-      if (valor.estado === "meteo_no_disponible" && trabajo.intentosFase < MAX_INTENTOS_FASE) {
-        trabajo = { ...trabajo, error: "No se pudo preparar la meteorologia; se reintentara." };
+      if ((valor.estado === "meteo_no_disponible" || (fase === "precios" && valor.estado === "no_disponible")) && trabajo.intentosFase < MAX_INTENTOS_FASE) {
+        trabajo = { ...trabajo, error: fase === "precios" ? "No se pudieron preparar los precios REE; se reintentara." : "No se pudo preparar la meteorologia; se reintentara." };
         await kv.put(TRABAJO, JSON.stringify(trabajo));
         return { resultado: "reintento", fase, fecha };
       }

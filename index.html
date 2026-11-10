@@ -551,7 +551,8 @@
             <option value="">Sin tarifa (no se calculan euros)</option>
             <option value="plana">Precio único</option>
             <option value="periodos">Por periodos P1/P2/P3</option>
-            <option value="indexada">Indexada (precio horario)</option>
+            <option value="indexada_ree">Octopus Flexi: REE + componentes estimados</option>
+            <option value="indexada">Indexada: medias históricas manuales</option>
           </select>
         </label>
         <div class="campos campos-fila" id="informeCampoTarifa" hidden>
@@ -563,7 +564,14 @@
           <label>Precio de la energía (€/kWh, sin impuestos) <input type="text" inputmode="decimal" id="informePrecio"></label>
         </div>
         <div class="campos campos-fila" id="informeCampoIndexada" hidden>
-          <label class="check"><input type="checkbox" id="informeAcepta"> Acepto una estimación con medias históricas (no son los precios reales de cada hora)</label>
+          <label class="check"><input type="checkbox" id="informeAcepta"> Acepto un coste estimado, no el precio final verificado de mi contrato</label>
+        </div>
+        <div class="campos campos-fila" id="informeCampoMercado" hidden>
+          <p class="ayuda">Los precios del mercado se consultan automáticamente en REE. Estos componentes iniciales son orientativos, inferidos de facturas de septiembre de 2026; revísalos si cambia tu contrato. Importes sin impuestos.</p>
+          <label>Suplemento (€/kWh) <input type="text" inputmode="decimal" id="informeSuplemento" value="0.05"></label>
+          <label>Peajes y cargos P1 (€/kWh) <input type="text" inputmode="decimal" id="informePeajeP1" value="0.097"></label>
+          <label>Peajes y cargos P2 (€/kWh) <input type="text" inputmode="decimal" id="informePeajeP2" value="0.029"></label>
+          <label>Peajes y cargos P3 (€/kWh) <input type="text" inputmode="decimal" id="informePeajeP3" value="0.003"></label>
         </div>
         <div class="campos campos-fila" id="informeCampoPeriodos" hidden>
           <label>P1 (€/kWh) <input type="text" inputmode="decimal" id="informeP1"></label>

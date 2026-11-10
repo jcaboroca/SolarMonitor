@@ -2,7 +2,7 @@
 // archivo de SolarMAN: [t en segundos, solar, casa, compra, venta, carga, descarga, soc].
 // Todo en hora de Madrid. Un canal ausente NO es cero: sin cobertura no hay energia ni euros.
 
-import { limitesDia, partesMadrid, periodoMadrid, tipoDia, sumarDias } from "./horario.js";
+import { limitesDia, partesMadrid, periodoMadrid, tipoDia, sumarDias, diaMadrid } from "./horario.js";
 
 const SENALES = ["solar", "casa", "compra", "venta", "carga", "descarga"];
 const PASO = 300;
@@ -214,7 +214,7 @@ const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 const precio = (x) => typeof x === "number" && Number.isFinite(x) && x >= 0 && x <= 2;
 
 /** Valida la tarifa configurada para `fecha`. Nunca usa un precio por defecto. */
-export function evaluarTarifa(t, fecha) {
+export function evaluarTarifa(t, fecha, mercado = null) {
   const no = (motivo) => ({ valida: false, motivo });
   if (!t || typeof t !== "object") return no("No hay tarifa configurada.");
   if (!["plana", "periodos", "indexada"].includes(t.tipo)) return no("El tipo de tarifa no es valido.");
@@ -231,6 +231,22 @@ export function evaluarTarifa(t, fecha) {
     if (!["P1", "P2", "P3"].every((p) => precio(t[p]))) return no("Faltan precios validos de P1, P2 y P3.");
     return { valida: true, tipo: "periodos", precios: { P1: t.P1, P2: t.P2, P3: t.P3 }, estimado: false };
   }
+  if (t.mercado != null) {
+    const m = t.mercado;
+    if (t.aceptaEstimacion !== true) return no("Debes aceptar la estimacion con precios REE y componentes orientativos.");
+    if (!precio(m.suplemento) || !["P1", "P2", "P3"].every((p) => precio(m.peajes?.[p]))) return no("Faltan suplemento, peajes y cargos validos para estimar la tarifa.");
+    const horarios = new Map();
+    const { inicio, fin } = limitesDia(fecha);
+    if (mercado?.desde <= fecha && mercado?.hasta >= fecha) {
+      for (const [instante, spot] of mercado.horas || []) {
+        if (Number.isFinite(instante) && instante >= inicio && instante < fin && Number.isFinite(spot)) {
+          horarios.set(instante, spot + m.suplemento + m.peajes[periodoMadrid(instante)]);
+        }
+      }
+    }
+    return { valida: true, tipo: "indexada", precios: null, horarios, estimado: true,
+      motivo: "No hay precios REE completos para las horas de compra de ese dia." };
+  }
   const m = t.mediaHistorica;
   if (t.aceptaEstimacion !== true) return { valida: true, tipo: "indexada", precios: null, motivo: "Tarifa indexada: no hay precios horarios verificados para ese dia y no has aceptado una estimacion con medias historicas." };
   if (!m || !["P1", "P2", "P3"].every((p) => precio(m[p]))) return no("Faltan las medias historicas validas de P1, P2 y P3.");
@@ -240,11 +256,11 @@ export function evaluarTarifa(t, fecha) {
 const conImpuestos = (x) => x * (1 + IMPUESTO_ELECTRICO) * (1 + IVA);
 
 /** Coste de la energia comprada ese dia (con impuestos; sin potencia, alquiler ni otros conceptos). */
-export function costeDia(integrado, tarifa, fecha) {
+export function costeDia(integrado, tarifa, fecha, mercado = null) {
   const sin = (motivo) => ({ estado: "no_disponible", motivo });
-  const t = evaluarTarifa(tarifa, fecha);
+  const t = evaluarTarifa(tarifa, fecha, mercado);
   if (!t.valida) return sin(t.motivo);
-  if (!t.precios) return sin(t.motivo);
+  if (!t.precios && !t.horarios?.size) return sin(t.motivo);
   const cob = integrado.cobertura.compra;
   if (cob < COBERTURA_COSTE) return sin("No hay datos de compra suficientes ese dia para calcular el coste.");
   const parcial = !coberturaCompleta(cob);
@@ -253,7 +269,9 @@ export function costeDia(integrado, tarifa, fecha) {
   for (const h of integrado.porHora) {
     if (!h.compra) continue;
     const p = periodoMadrid(h.inicio);
-    const e = h.compra * conImpuestos(t.precios[p]);
+    const precioHora = t.horarios ? t.horarios.get(h.inicio) : t.precios[p];
+    if (!Number.isFinite(precioHora)) return sin(t.motivo);
+    const e = h.compra * conImpuestos(precioHora);
     euros += e;
     periodos[p].kwh += h.compra;
     periodos[p].euros += e;
@@ -263,18 +281,23 @@ export function costeDia(integrado, tarifa, fecha) {
     p.euros = redondear(p.euros, 2);
   }
   const nota = "Solo energia comprada, con impuesto electrico e IVA; no incluye potencia, alquiler de contador ni otros conceptos, asi que no es la factura.";
-  const faltan = parcial ? `Minimo observado: solo hay datos de compra del ${Math.round(cob * 100)} % del dia y no se ha extrapolado el resto. ` : "";
+  const faltan = parcial ? `${t.horarios ? "Importe observado" : "Minimo observado"}: solo hay datos de compra del ${Math.round(cob * 100)} % del dia y no se ha extrapolado el resto. ` : "";
+  const estimacion = t.horarios
+    ? "Estimacion con precios horarios REE (media de cuatro cuartos), suplemento y peajes orientativos; no es el precio final verificado de Octopus Flexi."
+    : "Estimacion con medias historicas de una tarifa indexada, no con los precios reales de cada hora.";
   const r = t.estimado
-    ? { estado: "estimado", euros: redondear(euros, 2), periodos, fuentePrecios: tarifa.fuente, aviso: `${faltan}Estimacion con medias historicas de una tarifa indexada, no con los precios reales de cada hora. ${nota}` }
+    ? { estado: "estimado", euros: redondear(euros, 2), periodos, fuentePrecios: tarifa.fuente, aviso: `${faltan}${estimacion} ${nota}` }
     : { estado: "disponible", euros: redondear(euros, 2), periodos, fuentePrecios: tarifa.fuente, aviso: `${faltan}${nota}` };
   if (parcial) {
     r.parcial = true;
     r.cobertura = cob;
+    if (t.horarios) r.minimo = false;
   }
+  if (t.horarios) r.metodo = "ree";
   return r;
 }
 
-function ranking(integrado, coste, tarifaPrecios) {
+function ranking(integrado, coste, tarifa) {
   const porEuros = coste.estado === "disponible" || coste.estado === "estimado";
   const medianaCasa = mediana(integrado.porHora.filter((h) => h.cobertura.casa >= 0.75 && h.casa !== null).map((h) => h.casa));
   const candidatas = integrado.porHora.filter((h) => h.cobertura.compra >= 0.75 && (h.compra ?? 0) > 0.05);
@@ -285,7 +308,7 @@ function ranking(integrado, coste, tarifaPrecios) {
     if (h.socFin !== null && h.socFin <= 20) motivos.push(`nivel de batería indicado bajo (${h.socFin} %)`);
     if (h.cobertura.descarga >= 0.75 && (h.descarga ?? 0) > 0.05) motivos.push("descarga de batería observada en esa hora");
     const r = { hora: h.hora, inicio: new Date(h.inicio).toISOString(), compraKwh: redondear(h.compra, 2), motivos };
-    if (porEuros) r.euros = redondear(h.compra * conImpuestos(tarifaPrecios[periodoMadrid(h.inicio)]), 2);
+    if (porEuros) r.euros = redondear(h.compra * conImpuestos(tarifa.horarios ? tarifa.horarios.get(h.inicio) : tarifa.precios[periodoMadrid(h.inicio)]), 2);
     return r;
   };
   // ISO UTC ya tiene orden cronologico; localeCompare inicializa ICU y agota la CPU gratuita en frio.
@@ -340,10 +363,24 @@ const pct = (c) => (coberturaCompleta(c) ? "100" : String(Math.min(99.9, Math.ro
 const kwh = (x) => `${redondear(x, 1).toString().replace(".", ",")} kWh`;
 const euros = (x) => x.toFixed(2).replace(".", ",");
 
-export function construirInforme({ puntos, fecha, ahora, config = {}, diarios = {}, integrado: previo = null, pendientesMigracion = 0 }) {
+export function construirInforme({ puntos, fecha, ahora, config = {}, diarios = {}, integrado: previo = null, pendientesMigracion = 0, mercado = null }) {
   const integrado = previo || integrarDia(puntos, fecha);
+  const evaluada = evaluarTarifa(config.tarifa, fecha, mercado);
   const fuente = { nombre: "SolarMAN (archivo del servidor)", datadis: false, nota: "Datos de SolarMAN guardados en el servidor. No usa Datadis ni facturas: son estimaciones, no el contador oficial.", ultimoDato: integrado.ultimoDato };
   const base = { version: 1, fecha, tipoDia: tipoDia(fecha), generado: new Date(ahora).toISOString(), fuente, horasEsperadas: integrado.horasEsperadas, cobertura: Object.fromEntries(Object.entries(integrado.cobertura).map(([k, v]) => [k, redondear(v, 4)])), huella: { f: versionIntegrado(integrado), a: versionDependencias(diarios, fecha), p: pendientesMigracion > 0 ? 1 : 0 } };
+  if (config.tarifa?.mercado) {
+    const m = config.tarifa.mercado;
+    const modeloValido = evaluarTarifa(config.tarifa, config.tarifa.desde).valida;
+    base.precios = {
+      ...(mercado || { estado: "no_disponible", error: "No se han preparado los precios REE." }),
+      tarifa: config.tarifa,
+      horas: (mercado?.horas || []).map(([t, spot]) => {
+        const dia = diaMadrid(t);
+        const vigente = modeloValido && dia >= config.tarifa.desde && (!config.tarifa.hasta || dia <= config.tarifa.hasta);
+        return [t, spot, vigente ? conImpuestos(spot + m.suplemento + m.peajes[periodoMadrid(t)]) : null];
+      }),
+    };
+  }
   const necesarias = ["solar", "casa", "compra"].map((s) => integrado.cobertura[s]);
 
   if (!integrado.muestras || Math.max(...necesarias) < 0.25) {
@@ -356,9 +393,8 @@ export function construirInforme({ puntos, fecha, ahora, config = {}, diarios = 
     const c = integrado.cobertura[s];
     energia[s] = c >= COBERTURA_MINIMA && integrado.energia[s] !== null ? { kwh: redondear(integrado.energia[s], 2), cobertura: redondear(c, 4), minimo: !coberturaCompleta(c) } : null;
   }
-  const coste = costeDia(integrado, config.tarifa, fecha);
-  const evaluada = evaluarTarifa(config.tarifa, fecha);
-  const rank = integrado.cobertura.compra >= COBERTURA_MINIMA ? ranking(integrado, coste, evaluada.precios) : null;
+  const coste = costeDia(integrado, config.tarifa, fecha, mercado);
+  const rank = integrado.cobertura.compra >= COBERTURA_MINIMA ? ranking(integrado, coste, evaluada) : null;
   const resumen = resumirDia(integrado);
   const comparacion = compararDias({ fecha, actual: resumen, diarios });
   const mes = acumuladoMes({ fecha, diarios: { ...diarios, [fecha]: resumen }, pendientesMigracion });
@@ -381,7 +417,7 @@ export function construirInforme({ puntos, fecha, ahora, config = {}, diarios = 
   }
   for (const s of integrado.saltosSoc.slice(0, 3)) c.push({ tipo: "aviso", texto: `A las ${s.hora} el nivel de batería indicado cambió de golpe de ${s.de} % a ${s.a} %. Es un cambio del valor indicado por el inversor; no se interpreta como un diagnóstico de la batería.` });
   if (coste.estado === "no_disponible") c.push({ tipo: "aviso", texto: `Coste en euros no disponible: ${coste.motivo}` });
-  else c.push({ tipo: "dato", texto: `Coste de la energía comprada ${coste.parcial ? "observado (al menos)" : ""}${coste.estado === "estimado" ? " (estimación con medias históricas)" : ""}: ${coste.parcial ? "al menos " : ""}≈ ${euros(coste.euros)} €. ${coste.aviso}`.replace(/\s+:/, ":") });
+  else c.push({ tipo: "dato", texto: `Coste de la energía comprada ${coste.parcial ? (coste.minimo === false ? "observado" : "observado (al menos)") : ""}${coste.estado === "estimado" ? (coste.metodo === "ree" ? " (estimación con mercado REE)" : " (estimación con medias históricas)") : ""}: ${coste.parcial && coste.minimo !== false ? "al menos " : ""}≈ ${euros(coste.euros)} €. ${coste.aviso}`.replace(/\s+:/, ":") });
   if (comparacion) {
     const x = comparacion.metricas.compra;
     c.push({ tipo: "dato", texto: `Frente a la mediana de ${x.n} días ${comparacion.tipoDia === "finde" ? "de fin de semana o festivo" : "laborables"} recientes, compraste ${x.difKwh >= 0 ? "+" : ""}${kwh(x.difKwh)}${x.difPct !== null ? ` (${x.difPct >= 0 ? "+" : ""}${x.difPct} %)` : ""}.` });

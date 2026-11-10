@@ -7,6 +7,7 @@ import { construirHoy, componerHoy } from "./informe-hoy.js";
 import { diaMadrid, partesMadrid, sumarDias } from "./horario.js";
 import { configVapid, enviarPush, idSuscripcion, validarEndpoint, validarSuscripcion } from "./push.js";
 import { leerTrabajo } from "./informe-estado.js";
+import { prepararPrecios } from "./informe-precios.js";
 
 export const MAX_GENERACIONES = 4;
 // Regeneraciones extra, solo si cambia el contenido aceptado de SolarMAN (o los agregados) despues de generar.
@@ -55,7 +56,11 @@ export function validarConfig(cuerpo) {
     else if (limpia.tipo === "periodos") Object.assign(limpia, { P1: t.P1, P2: t.P2, P3: t.P3 });
     else if (limpia.tipo === "indexada") {
       limpia.aceptaEstimacion = t.aceptaEstimacion === true;
-      if (limpia.aceptaEstimacion) limpia.mediaHistorica = t.mediaHistorica && { P1: t.mediaHistorica.P1, P2: t.mediaHistorica.P2, P3: t.mediaHistorica.P3 };
+      if (t.mercado != null) limpia.mercado = {
+        suplemento: t.mercado.suplemento,
+        peajes: { P1: t.mercado.peajes?.P1, P2: t.mercado.peajes?.P2, P3: t.mercado.peajes?.P3 },
+      };
+      else if (limpia.aceptaEstimacion) limpia.mediaHistorica = t.mediaHistorica && { P1: t.mediaHistorica.P1, P2: t.mediaHistorica.P2, P3: t.mediaHistorica.P3 };
     }
     const r = evaluarTarifa(limpia, FECHA.test(limpia.desde || "") ? limpia.desde : "0000-00-00");
     if (!r.valida) return mal(r.motivo);
@@ -120,7 +125,8 @@ export async function generarInforme(entorno, { ahora = Date.now(), pedir = (u, 
     const fuente = preparacion?.fuente ?? await leerFuente(kv, resumen, fecha);
     if (preparacion && fuente.fecha !== fecha) throw new Error("La fuente preparada no corresponde a ayer.");
     const { diarios, integrado } = fuente;
-    informe = construirInforme({ integrado, fecha, ahora, config: cfg, diarios, pendientesMigracion: preparacion ? fuente.pendientesMigracion : pendientesRelevantes(resumen, fecha).length });
+    const mercado = preparacion ? preparacion.precios : await prepararPrecios({ config: cfg, ahora, pedir });
+    informe = construirInforme({ integrado, fecha, ahora, config: cfg, diarios, mercado, pendientesMigracion: preparacion ? fuente.pendientesMigracion : pendientesRelevantes(resumen, fecha).length });
     if (informe.estado !== "sin_datos") informe.hoy = preparacion
       ? componerHoy({ config: cfg, informe, prevision: preparacion.prevision, calibracion: preparacion.calibracion, ahora })
       : await construirHoy({ config: cfg, informe, resumen, ahora, pedir });
@@ -133,6 +139,7 @@ export async function generarInforme(entorno, { ahora = Date.now(), pedir = (u, 
   // Regenerar no borra la entrega: el estado de envio de esa fecha se conserva para no duplicar avisos.
   const push = final ? (previa?.push && previa.push.estado !== "no_aplica" ? previa.push : { estado: "pendiente", pendientes: 1 }) : { estado: "no_aplica", pendientes: 0 };
   const entrada = { fecha, estado: informe.estado, generado: informe.generado, intentos, huella: informe.huella ?? null, push };
+  if (informe.precios) entrada.preciosEstado = informe.precios.estado;
   await kv.put(claveInforme(fecha), JSON.stringify(informe));
   await guardarIndice(kv, indice, entrada);
   return { informe, entrada };
@@ -242,7 +249,9 @@ export async function refrescarAnterior(kv, indice, { fecha: ayer, ahora }) {
     const [fuente, config] = await Promise.all([kv.get(claveFuente, "json"), kv.get("informe-config", "json")]);
     if (fuente?.fecha !== fecha || fuente.generado !== previo.generado) throw new Error("Falta la fuente del refresco.");
     const { diarios, integrado, pendientesMigracion } = fuente;
-    const informe = construirInforme({ integrado, fecha, ahora, config: { ...CONFIG_BASE, ...(config || {}) }, diarios, pendientesMigracion });
+    const cfg = { ...CONFIG_BASE, ...(config || {}) };
+    if (previo.precios?.tarifa) cfg.tarifa = previo.precios.tarifa;
+    const informe = construirInforme({ integrado, fecha, ahora, config: cfg, diarios, pendientesMigracion, mercado: previo.precios });
     informe.generado = previo.generado;
     informe.actualizado = new Date(ahora).toISOString();
     informe.hoy = previo.hoy ? { ...previo.hoy, nota: `Recomendación elaborada el ${previo.generado.slice(0, 10)}; no se ha recalculado al actualizar este informe.` } : null;
