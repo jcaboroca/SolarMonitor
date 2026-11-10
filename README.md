@@ -163,10 +163,12 @@ suprime duplicados visibles).
   origen, ubicación aproximada, activaciones), suscripciones push (máx. 5) e
   informes generados. Nunca contraseñas de Datadis, facturas ni claves maestras.
 - Open-Meteo recibe solo latitud/longitud redondeadas, nunca consumos.
+- REE recibe solo las fechas solicitadas, nunca consumos, datos del contrato ni credenciales.
 - Todas las rutas `/informe/*` pasan por la misma autenticación que el resto;
   los informes no son ficheros estáticos. El push no lleva consumos ni costes.
-- Sin tarifa vigente verificada no hay euros: se ordenan kWh comprados. Un precio
-  indexado solo se muestra como estimación de media histórica, nunca como factura.
+- Sin tarifa vigente configurada no hay euros: se ordenan kWh comprados. Un precio
+  indexado requiere aceptar una estimación: puede usar mercado REE con componentes
+  orientativos o medias históricas manuales, nunca se presenta como factura.
   El precio por defecto de la factura antigua no se usa como precio actual.
 
 ### Despliegue
@@ -184,7 +186,7 @@ Sin esas variables el push falla con un error claro (el informe sí se genera).
 Un único cron (`* * * * *`) selecciona **una fase por invocación**:
 
 - Minutos 02, 03 y 04 de cada hora: sondeo, descarga de un día y migración local de un día, respectivamente.
-- Desde las 08:25 de Madrid: fuente de ayer, previsión, calibración e informe, en ejecuciones separadas.
+- Desde las 08:25 de Madrid: fuente de ayer, previsión, calibración, precios REE (si se han configurado) e informe, en ejecuciones separadas.
 - Desde las 08:30: envío, como máximo a un dispositivo por ejecución; los demás siguen en los minutos posteriores.
 
 La guarda usa Europe/Madrid también en los cambios de hora. El estado de preparación
@@ -203,6 +205,37 @@ separadas del paquete cifrado.
 El endpoint sin `fases=1` conserva temporalmente la generación síncrona para clientes
 que ya estaban abiertos antes de actualizar la web; hay que recargarlos para usar
 el flujo nuevo. El cron siempre usa las fases independientes.
+
+### Precios automáticos y estimación de Octopus Flexi
+
+En la configuración del informe, «Octopus Flexi: REE + componentes estimados»
+consulta el mercado spot de ayer y hoy en REData, sin clave ni suscripción.
+Comparte el lector con «Ahora». El precio mostrado de mercado es la media de
+los cuatro cuartos de cada hora, convertida de €/MWh a €/kWh; no es el PVPC.
+Se conservan las 23 o 25 horas de los cambios de horario y los precios cero
+o negativos. Una hora con cuartos ausentes o contradictorios no se valora.
+
+La compra estimada suma suplemento y peajes/cargos P1/P2/P3 al mercado y aplica
+los impuestos del modelo existente (impuesto eléctrico e IVA). Los valores
+iniciales son orientativos, inferidos de facturas de septiembre de 2026:
+suplemento 0,05 €/kWh y peajes/cargos 0,097 / 0,029 / 0,003 €/kWh. Son editables;
+no se afirman como condiciones actuales verificadas de Octopus. Se requiere
+aceptación explícita, fuente y fechas de vigencia. No incluye potencia, alquiler
+ni compensación de excedentes.
+
+La tabla distingue mercado y compra estimada, muestra ambas fechas y sus
+supuestos incluso si SolarMAN no tiene cobertura suficiente para estimar euros.
+El coste y el ranking utilizan el precio de cada hora comprada, no una media
+por periodo. Si falta alguno de esos precios no se calcula un total: no se
+rellena con cero ni con medias antiguas. Los costes parciales son importes
+observados, no mínimos garantizados cuando el mercado puede ser negativo.
+
+REE tiene una fase independiente con tres intentos acotados. Un fallo deja un
+estado visible y permite publicar el informe energético sin coste. Los precios
+incompletos se vuelven a intentar como mínimo una hora después, dentro del límite
+de generaciones automáticas diarias. Los refrescos históricos conservan los
+precios, componentes y recomendación originales, sin consultar precios actuales
+ni repetir avisos.
 
 ### iPhone
 

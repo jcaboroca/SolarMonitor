@@ -2,6 +2,7 @@
 // El servidor genera el informe a las 08:30 (Madrid) a partir del archivo de SolarMAN; aqui solo se
 // lee con la clave maestra de siempre (misma puerta que el resto del Worker). El permiso de
 // notificaciones se pide unicamente al pulsar "Activar".
+import { INDEXADA_POR_DEFECTO } from "./mercado-datos.js";
 
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 const SENALES = { solar: "Sol", casa: "Casa", compra: "Compra", venta: "Venta", carga: "Carga batería", descarga: "Descarga batería" };
@@ -53,12 +54,18 @@ export function configDeFormulario(v) {
     tarifa: null,
   };
   if (v.tipo) {
-    const t = { tipo: v.tipo, desde: v.desde || null, hasta: v.hasta || null, fuente: v.fuente || "" };
+    const t = { tipo: v.tipo === "indexada_ree" ? "indexada" : v.tipo, desde: v.desde || null, hasta: v.hasta || null, fuente: v.fuente || "" };
     if (v.tipo === "plana") t.precio = numero(v.precio);
     if (v.tipo === "periodos") Object.assign(t, { P1: numero(v.p1), P2: numero(v.p2), P3: numero(v.p3) });
     if (v.tipo === "indexada") {
       t.aceptaEstimacion = v.aceptaEstimacion === true;
       if (t.aceptaEstimacion) t.mediaHistorica = { P1: numero(v.p1), P2: numero(v.p2), P3: numero(v.p3) };
+    }
+    if (v.tipo === "indexada_ree") {
+      t.aceptaEstimacion = v.aceptaEstimacion === true;
+      t.mercado = { suplemento: numero(v.suplemento), peajes: {
+        P1: numero(v.peajeP1), P2: numero(v.peajeP2), P3: numero(v.peajeP3),
+      } };
     }
     config.tarifa = t;
   }
@@ -94,13 +101,37 @@ function htmlComparacion(c) {
 
 const lista = (items) => (items.length ? `<ul>${items.map((i) => `<li>${escapar(i)}</li>`).join("")}</ul>` : "");
 
+function htmlPrecios(p) {
+  if (!p) return "";
+  if (!p.horas?.length) return `<section class="informe-bloque"><h4>Precios de la luz</h4><p>Precios REE no disponibles. ${escapar(p.error || "Se reintentará su consulta; no se usan precios cero ni medias antiguas.")}</p></section>`;
+  const dia = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Madrid", year: "numeric", month: "2-digit", day: "2-digit" });
+  const hora = new Intl.DateTimeFormat("es-ES", { timeZone: "Europe/Madrid", hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset" });
+  const precio = (v) => Number.isFinite(v) ? v.toLocaleString("es-ES", { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : "—";
+  const dias = new Map();
+  for (const fila of p.horas) {
+    const fecha = dia.format(fila[0]);
+    if (!dias.has(fecha)) dias.set(fecha, []);
+    dias.get(fecha).push(fila);
+  }
+  const modelo = p.tarifa?.mercado;
+  return `<section class="informe-bloque"><h4>Precios de la luz</h4>
+    <p>Mercado: REE, media de los cuatro cuartos de cada hora. Compra: estimación de Octopus Flexi, no precio contractual verificado.</p>
+    <p class="ayuda">Consulta: ${escapar(p.consultado ? new Date(p.consultado).toLocaleString("es-ES", { timeZone: "Europe/Madrid" }) : "sin fecha")} (Madrid). ${escapar(p.tarifa?.fuente || "")}</p>
+    ${modelo ? `<p class="ayuda">Supuestos sin impuestos: suplemento ${precio(modelo.suplemento)} €/kWh; peajes y cargos P1 ${precio(modelo.peajes.P1)}, P2 ${precio(modelo.peajes.P2)}, P3 ${precio(modelo.peajes.P3)} €/kWh. La compra estimada incluye impuesto eléctrico (5,1127 %) e IVA (21 %), no potencia ni alquiler.</p>` : ""}
+    ${p.estado !== "disponible" ? '<p class="ayuda">Faltan precios de algunas horas solicitadas; no se rellenan con cero ni con medias históricas.</p>' : ""}
+    ${[...dias].map(([fecha, filas]) => `<details ${fecha === p.hasta ? "open" : ""}><summary>${escapar(fechaLarga(fecha))} · ${filas.length} horas con precio</summary>
+    <div class="tabla-envoltorio"><table class="tabla"><caption>Precios del ${escapar(fecha)} en €/kWh</caption><thead><tr><th scope="col">Hora Madrid</th><th scope="col">Mercado sin impuestos</th><th scope="col">Compra estimada con impuestos</th></tr></thead>
+    <tbody>${filas.map(([t, spot, estimado]) => `<tr><th scope="row">${escapar(hora.format(t))}</th><td class="numero">${precio(spot)}</td><td class="numero">${precio(estimado)}</td></tr>`).join("")}</tbody></table></div></details>`).join("")}
+    </section>`;
+}
+
 export function htmlInforme(i) {
   const [clase, rotulo] = ESTADOS[i.estado] || ["fallo", "Desconocido"];
   const cobertura = Object.entries(i.cobertura || {})
     .filter(([k]) => SENALES[k])
     .map(([k, c]) => `<li><span>${SENALES[k]}</span> <b>${porcentaje(c)} %</b></li>`)
     .join("");
-  const coste = i.coste?.estado === "no_disponible" ? `Coste no disponible: ${i.coste.motivo ?? ""}` : i.coste ? `${i.coste.estado === "estimado" ? "Estimación del coste" : "Coste de la energía comprada"}${i.coste.parcial ? ", al menos" : ""}: ≈ ${(i.coste.euros ?? 0).toLocaleString("es-ES", { minimumFractionDigits: 2 })} € (${i.coste.aviso ?? ""})` : "";
+  const coste = i.coste?.estado === "no_disponible" ? `Coste no disponible: ${i.coste.motivo ?? ""}` : i.coste ? `${i.coste.estado === "estimado" ? "Estimación del coste" : "Coste de la energía comprada"}${i.coste.parcial ? (i.coste.minimo === false ? ", solo datos observados" : ", al menos") : ""}: ≈ ${(i.coste.euros ?? 0).toLocaleString("es-ES", { minimumFractionDigits: 2 })} € (${i.coste.aviso ?? ""})` : "";
   const hoy = i.hoy;
   return `
 <header class="informe-cabecera">
@@ -112,6 +143,7 @@ export function htmlInforme(i) {
   ${(i.conclusiones || []).map((c) => `<p class="informe-${escapar(c.tipo)}">${escapar(c.texto)}</p>`).join("")}
   <p>${escapar(coste)}</p>
 </section>
+${htmlPrecios(i.precios)}
 ${htmlComparacion(i.comparacion)}
 ${htmlMes(i.mes)}
 <section class="informe-bloque"><h4>Cobertura de datos</h4><ul class="informe-cobertura">${cobertura}</ul></section>
@@ -258,13 +290,18 @@ export function iniciarInforme({ $, pedirNube, hayNube, abrirPestana }) {
     p2: $("informeP2").value,
     p3: $("informeP3").value,
     aceptaEstimacion: $("informeAcepta").checked,
+    suplemento: $("informeSuplemento").value,
+    peajeP1: $("informePeajeP1").value,
+    peajeP2: $("informePeajeP2").value,
+    peajeP3: $("informePeajeP3").value,
   });
 
   function mostrarTipo() {
     const t = $("informeTipo").value;
     $("informeCampoPlana").hidden = t !== "plana";
     $("informeCampoPeriodos").hidden = t !== "periodos" && !(t === "indexada" && $("informeAcepta").checked);
-    $("informeCampoIndexada").hidden = t !== "indexada";
+    $("informeCampoIndexada").hidden = t !== "indexada" && t !== "indexada_ree";
+    $("informeCampoMercado").hidden = t !== "indexada_ree";
     $("informeCampoTarifa").hidden = !t;
   }
 
@@ -275,7 +312,7 @@ export function iniciarInforme({ $, pedirNube, hayNube, abrirPestana }) {
     $("informeLat").value = c.ubicacion?.lat ?? "";
     $("informeLon").value = c.ubicacion?.lon ?? "";
     const t = c.tarifa;
-    $("informeTipo").value = t?.tipo ?? "";
+    $("informeTipo").value = t?.mercado ? "indexada_ree" : t?.tipo ?? "";
     $("informeDesde").value = t?.desde ?? "";
     $("informeHasta").value = t?.hasta ?? "";
     $("informeFuente").value = t?.fuente ?? "";
@@ -285,6 +322,11 @@ export function iniciarInforme({ $, pedirNube, hayNube, abrirPestana }) {
     $("informeP2").value = p?.P2 ?? "";
     $("informeP3").value = p?.P3 ?? "";
     $("informeAcepta").checked = t?.aceptaEstimacion === true;
+    const mercado = t?.mercado ?? INDEXADA_POR_DEFECTO;
+    $("informeSuplemento").value = mercado.suplemento;
+    $("informePeajeP1").value = mercado.peajes.P1;
+    $("informePeajeP2").value = mercado.peajes.P2;
+    $("informePeajeP3").value = mercado.peajes.P3;
     mostrarTipo();
   }
 
